@@ -1,4 +1,4 @@
-# ROOM/05 v6.12.6 — signaling recovery and quiet theme effects
+# ROOM/05 v6.12.7 — signaling recovery and quiet theme effects
 
 - Fixed a room-map replacement bug when the only attendee refreshed the page; the replacement participant now remains in the active room registry.
 - Added periodic draining of queued signaling packets when WebSocket back-pressure temporarily blocks delivery. SDP descriptions are preserved ahead of expendable candidate traffic, and stale queued packets from departed peers are discarded.
@@ -7,7 +7,7 @@
 - Participant rows show connecting/reconnecting status, and room-state updates no longer throw if the signaling socket closes during an interaction.
 - Fixed socket-send failures during initial join and made state/chat/reaction/heartbeat sends use a guarded signaling helper.
 - Removed the non-Sakura decorative PNG stickers from the previous aesthetic experiment. Each theme now uses subtle, filled vector motifs (for example, a small Game Boy controller, arcade pad, fish, planet, cup or curtain) positioned around the edges behind content. The original Sakura blossom/petal/sprig PNGs and falling-petal animation are unchanged.
-- Updated CSS/JavaScript cache-busting references to v6.12.6 so browsers fetch the corrected bundle.
+- Updated CSS/JavaScript cache-busting references to v6.12.7 so browsers fetch the corrected bundle.
 - Preserves the 10-second auto-hide toolbar, touch-to-reveal behavior, immersive landscape Theater layout with participant seats at the bottom, visible reaction palette, supplied original audio, accounts, chat, and presentation controls.
 
 ## Important connectivity note
@@ -229,3 +229,10 @@ The signaling server advertises multiple public STUN servers. For connectivity t
 Incoming participant voice is routed through a Web Audio output graph that is unlocked from the room-entry gesture; video tiles are kept muted so audio is not duplicated. A small **TAP TO ENABLE CALL AUDIO** recovery button appears only if the browser suspends the audio graph or blocks its fallback audio element. Microphone capture requests mono, low-latency speech settings when supported, the sender marks voice as high priority and camera video as lower priority under congestion, and the remote speaking monitor attaches when the audio track arrives. Chat and People panels have explicit open/close handlers, and chat messages are rendered as text (not HTML).
 
 The client uses multiple STUN endpoints and retries ICE after a disconnected/failed state. STUN helps discover public network addresses but cannot relay media through every restrictive NAT/firewall. For those networks, configure a TURN service in Render using `TURN_URLS` (or `TURN_URL`), `TURN_USER`, and `TURN_PASS`. `TURN_URLS` accepts comma- or semicolon-separated `turn:` / `turns:` URLs. Do not commit TURN credentials to this repository. TURN credentials are delivered to signed-in browsers as part of ICE setup, so prefer provider-supported short-lived or usage-restricted credentials. Without a valid TURN service, no browser-only code can guarantee a connection across every network.
+
+
+## v6.12.7 Smoothness update
+- Theme transitions are limited to visible theme surfaces; video elements are excluded from broad transitions.
+- Large section atmospheres and motif layers animate using compositor-friendly transforms rather than background-position repaint loops.
+- Sakura petals are staggered independent sprites and pause while offscreen or when the page is hidden.
+- The bottom call dock can be swiped downward to hide immediately; any room tap reveals it, and the existing 10-second idle hide remains.

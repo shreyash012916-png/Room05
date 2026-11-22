@@ -1355,3 +1355,105 @@ body.theater-immersive-active { overflow:hidden !important; }
     height: 62px;
   }
 }
+
+/* ROOM/05 v6.12.7 — smooth, compositor-friendly theme motion. Avoid animating
+   background-position on large sections: it forces repeated paints and can
+   look like flicker on mobile GPUs. Ambient layers now move only by transform. */
+.landing, #call-screen:not(.theater-mode) {
+  animation: none !important;
+  background-position: 50% 50% !important;
+  background-size: cover;
+}
+.theme-scene::before {
+  animation: theme-glow-float 46s ease-in-out infinite alternate !important;
+  background-position: 50% 50% !important;
+  transform: translate3d(0,0,0) scale(1.015);
+  transform-origin: center;
+  backface-visibility: hidden;
+  will-change: transform;
+  pointer-events: none;
+}
+@keyframes theme-glow-float {
+  0% { transform: translate3d(-.35%, -.25%, 0) scale(1.015); }
+  100% { transform: translate3d(.35%, .25%, 0) scale(1.025); }
+}
+.theme-scene::after {
+  animation: theme-motif-float 52s ease-in-out infinite alternate !important;
+  background-position: 2.5% 15%, 96% 17%, 5% 83%, 94% 84% !important;
+  transform: translate3d(0,0,0);
+  backface-visibility: hidden;
+  will-change: transform;
+  contain: paint;
+}
+@keyframes theme-motif-float {
+  0% { transform: translate3d(0,-3px,0) rotate(-.12deg); }
+  100% { transform: translate3d(0,3px,0) rotate(.12deg); }
+}
+/* Sakura petals are separate, staggered sprites instead of a repaint-heavy
+   multi-background animation. Four sprites per major scene keep the effect light. */
+:root[data-theme="sakura"] .theme-scene::after {
+  background-image: none !important;
+  animation: none !important;
+}
+.theme-particle-layer {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+  contain: layout paint style;
+}
+.theme-falling-petal {
+  position: absolute;
+  top: -34px;
+  left: var(--petal-left, 50%);
+  width: var(--petal-size, 18px);
+  height: auto;
+  max-height: 30px;
+  object-fit: contain;
+  opacity: .20;
+  filter: drop-shadow(0 1px 5px rgba(255,142,194,.22));
+  transform: translate3d(0,-6vh,0) rotate(-24deg);
+  transform-origin: center;
+  animation: sakura-petal-fall var(--petal-time, 28s) linear var(--petal-delay, 0s) infinite;
+  backface-visibility: hidden;
+  will-change: transform, opacity;
+}
+@keyframes sakura-petal-fall {
+  0% { transform: translate3d(0,-8vh,0) rotate(-24deg); opacity: 0; }
+  9% { opacity: .20; }
+  88% { opacity: .18; }
+  100% { transform: translate3d(var(--petal-drift, 28px), 112vh, 0) rotate(var(--petal-rotation, 220deg)); opacity: 0; }
+}
+.theme-scene:not(.theme-scene-active) .theme-falling-petal { animation-play-state: paused; }
+.page-paused .theme-scene::before,
+.page-paused .theme-scene::after,
+.page-paused .theme-falling-petal { animation-play-state: paused !important; }
+/* Do not transition every descendant (including video elements) when changing
+   themes; only the actual themed surfaces transition their paint properties. */
+.theme-anim, .theme-anim * { transition: none !important; }
+.theme-anim body,
+.theme-anim .site-header,
+.theme-anim .landing,
+.theme-anim .entry-card,
+.theme-anim .how-section,
+.theme-anim .landing-footer,
+.theme-anim .auth-card,
+.theme-anim .call-topbar,
+.theme-anim .call-body,
+.theme-anim .call-footer,
+.theme-anim .side-panel,
+.theme-anim .settings-card,
+.theme-anim .theme-chip,
+.theme-anim .control-button,
+.theme-anim .leave-button {
+  transition: background-color .28s ease, color .28s ease, border-color .28s ease !important;
+}
+/* A deliberate vertical swipe on the dock tucks it away; normal taps still
+   trigger the existing reveal behavior on the room surface. */
+#call-screen > .call-footer { touch-action: none; }
+#call-screen > .call-footer button { touch-action: manipulation; }
+@media (prefers-reduced-motion: reduce) {
+  .theme-scene::before, .theme-scene::after, .theme-falling-petal { animation: none !important; }
+  .theme-anim body, .theme-anim .theme-scene, .theme-anim .control-button { transition: none !important; }
+}

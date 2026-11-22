@@ -190,13 +190,67 @@
   const THEME_COLORS = { cream: ['#e9e6dc', '#d9ff00'], midnight: ['#0f110e', '#d9ff00'], cyber: ['#07060d', '#ff2bd6'], terminal: ['#020a04', '#39ff6a'], vapor: ['#3b1170', '#ff71ce'], aurora: ['#0a3a3c', '#5cffd2'], grape: ['#130e1f', '#c59bff'], sunset: ['#1a0e12', '#ffb347'], bubblegum: ['#ffe0ed', '#ff8bd1'], matcha: ['#dce9d2', '#9dff6a'], gameboy: ['#c4cfa1', '#8bac0f'], theater: ['#100b11', '#d6ac70'], arcade: ['#09051a', '#65efff'], ocean: ['#061c2b', '#57d8ec'], sakura: ['#2b1223', '#ff9acb'], cosmic: ['#100b25', '#a28aff'] };
   const DARK_THEMES = new Set(['midnight', 'cyber', 'terminal', 'vapor', 'aurora', 'grape', 'sunset', 'theater', 'arcade', 'ocean', 'sakura', 'cosmic']);
   function resolveTheme(choice) { return choice === 'auto' ? (window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches ? 'midnight' : 'cream') : (THEME_COLORS[choice] ? choice : 'cream'); }
+
+  // Only the scenes currently in view run decorative particles. This keeps the
+  // theme treatment light on mobile GPUs and avoids animating hidden sections.
+  let themeParticleObserver = null;
+  function syncThemeParticles(theme) {
+    if (themeParticleObserver) { themeParticleObserver.disconnect(); themeParticleObserver = null; }
+    const scenes = Array.from(document.querySelectorAll('.theme-scene'));
+    const particleScenes = new Set(document.querySelectorAll('.landing, .entry-card, .how-section, .auth-card, #call-screen'));
+    scenes.forEach((scene, sceneIndex) => {
+      let layer = scene.querySelector(':scope > .theme-particle-layer');
+      if (theme !== 'sakura' || !particleScenes.has(scene)) {
+        if (layer) layer.remove();
+        scene.classList.remove('theme-scene-active');
+        return;
+      }
+      if (!layer) {
+        layer = document.createElement('div');
+        layer.className = 'theme-particle-layer';
+        layer.setAttribute('aria-hidden', 'true');
+        scene.appendChild(layer);
+      }
+      layer.replaceChildren();
+      // Four independent GPU-composited petals per scene; staggered starts
+      // create a natural fall without repainting a large background image.
+      for (let i = 0; i < 4; i++) {
+        const petal = document.createElement('img');
+        petal.className = 'theme-falling-petal';
+        petal.alt = '';
+        petal.decoding = 'async';
+        petal.loading = 'eager';
+        petal.src = (i === 2 && sceneIndex % 3 === 0) ? '/theme-sakura-blossom.png' : '/theme-sakura-petal.png';
+        const left = (13 + ((sceneIndex * 17 + i * 23) % 78));
+        const duration = 21 + ((sceneIndex * 3 + i * 5) % 13);
+        const delay = -((sceneIndex * 2 + i * 7) % duration);
+        petal.style.setProperty('--petal-left', left + '%');
+        petal.style.setProperty('--petal-size', (13 + ((sceneIndex + i) % 3) * 4) + 'px');
+        petal.style.setProperty('--petal-time', duration + 's');
+        petal.style.setProperty('--petal-delay', delay + 's');
+        petal.style.setProperty('--petal-drift', ((i % 2 ? 1 : -1) * (22 + i * 9)) + 'px');
+        petal.style.setProperty('--petal-rotation', ((i % 2 ? 1 : -1) * (190 + i * 48)) + 'deg');
+        layer.appendChild(petal);
+      }
+    });
+    if (theme === 'sakura' && 'IntersectionObserver' in window) {
+      themeParticleObserver = new IntersectionObserver((entries) => {
+        entries.forEach((entry) => entry.target.classList.toggle('theme-scene-active', entry.isIntersecting));
+      }, { root: null, threshold: 0.01 });
+      scenes.forEach((scene) => themeParticleObserver.observe(scene));
+    } else if (theme === 'sakura') {
+      scenes.forEach((scene) => scene.classList.add('theme-scene-active'));
+    }
+  }
+
   function applyTheme(choice, animate) {
     const t = resolveTheme(choice);
     const root = document.documentElement;
-    if (animate !== false) { root.classList.add('theme-anim'); clearTimeout(applyTheme.tm); applyTheme.tm = setTimeout(() => root.classList.remove('theme-anim'), 600); }
+    if (animate !== false) { root.classList.add('theme-anim'); clearTimeout(applyTheme.tm); applyTheme.tm = setTimeout(() => root.classList.remove('theme-anim'), 380); }
     root.dataset.theme = t;
     root.dataset.mode = DARK_THEMES.has(t) ? 'dark' : 'light';
     const meta = $('meta-theme'); if (meta) meta.content = THEME_COLORS[t][0];
+    syncThemeParticles(t);
     store.set('theme', choice);
     if (choice !== 'auto') store.set(DARK_THEMES.has(t) ? 'last-dark' : 'last-light', choice);
     document.querySelectorAll('.theme-chip').forEach((c) => c.setAttribute('aria-pressed', String(c.dataset.theme === choice)));
@@ -2658,7 +2712,48 @@
     callScreen.addEventListener('keydown', onCallActivity, true);
     callScreen.addEventListener('focusin', onCallActivity, true);
   }
+
+  // Drag the bottom dock downward to tuck it away immediately. A tap anywhere
+  // on the room continues to reveal it through onCallActivity above.
+  if (callFooter) {
+    let dockDrag = null;
+    callFooter.addEventListener('pointerdown', (event) => {
+      if (event.button !== undefined && event.button !== 0) return;
+      dockDrag = { id: event.pointerId, x: event.clientX, y: event.clientY };
+    }, { passive: true });
+    // Listen on window for release so a finger may finish the swipe outside
+    // the dock's rectangle without losing the gesture.
+    window.addEventListener('pointerup', (event) => {
+      if (!dockDrag || dockDrag.id !== event.pointerId) return;
+      const dx = event.clientX - dockDrag.x;
+      const dy = event.clientY - dockDrag.y;
+      dockDrag = null;
+      if (dy > 34 && dy > Math.abs(dx) * 1.15) hideCallControlsNow();
+    }, true);
+    window.addEventListener('pointercancel', (event) => {
+      if (dockDrag && dockDrag.id === event.pointerId) dockDrag = null;
+    }, true);
+    // Legacy touch fallback for older WebViews without Pointer Events.
+    if (!('PointerEvent' in window)) {
+      callFooter.addEventListener('touchstart', (event) => {
+        const touch = event.changedTouches && event.changedTouches[0];
+        if (touch) dockDrag = { id: 'touch', x: touch.clientX, y: touch.clientY };
+      }, { passive: true });
+      window.addEventListener('touchend', (event) => {
+        if (!dockDrag || dockDrag.id !== 'touch') return;
+        const touch = event.changedTouches && event.changedTouches[0];
+        const start = dockDrag;
+        dockDrag = null;
+        if (!touch) return;
+        const dx = touch.clientX - start.x;
+        const dy = touch.clientY - start.y;
+        if (dy > 34 && dy > Math.abs(dx) * 1.15) hideCallControlsNow();
+      }, { passive: true });
+      window.addEventListener('touchcancel', () => { dockDrag = null; }, { passive: true });
+    }
+  }
   document.addEventListener('visibilitychange', () => {
+    document.documentElement.classList.toggle('page-paused', document.hidden);
     if (!inRoom) return;
     if (document.hidden) clearCallControlsTimer();
     else showCallControls();

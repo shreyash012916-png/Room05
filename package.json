@@ -1,8 +1,8 @@
 {
   "name": "room05-p2p-video-rooms",
-  "version": "6.12.1",
+  "version": "6.12.3",
   "private": true,
-  "description": "ROOM/05 peer-to-peer rooms with visible reaction dock, labelled animated themes, immersive cinema and high-fidelity presentation",
+  "description": "ROOM/05 peer-to-peer rooms with refined cinematic theme art, auto-hiding call dock, immersive cinema and high-fidelity presentation",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"

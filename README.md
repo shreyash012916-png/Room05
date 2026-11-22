@@ -1,3 +1,17 @@
+# ROOM/05 v6.12.3 — refined theme art pass
+
+- Replaced the flat, outlined PNG artwork used by non-Sakura themes with premium cinematic CG/photo-style PNG assets. Sakura imagery and its falling-petal animation are intentionally unchanged.
+- Refined art is softly blended at the edges of all themed sections, with restrained opacity and slow motion so it does not compete with text, video or controls.
+- All original theme file names remain locally served by the Node static asset allowlist; no external image URLs are used.
+- The v6.12.2 ten-second auto-hide controls, mobile touch reveal, immersive Theater full-viewport layout and bottom participant seats remain unchanged.
+
+# ROOM/05 v6.12.2 update
+
+- Bottom call controls auto-hide after 10 seconds of inactivity and reappear on touch, click, pointer activity, keyboard focus, or visibility return.
+- Immersive Theater hides the bottom dock immediately; touching/clicking the stage reveals it temporarily.
+- Includes 24 transparent, locally served PNG theme elements for Sakura, Arcade, Ocean, Cosmic, Theater and the other selectable themes.
+- PNG assets are included at the repository root and served by the Node static asset allowlist.
+
 # ROOM/05 v6.12.1
 
 ## v6.12.1 visible reactions, labelled animated themes and presentation fidelity

@@ -21,12 +21,14 @@ const ROOT = __dirname;
 const TERMS_VERSION = '1.0';
 const PRIVACY_VERSION = '1.1';
 const SESSION_MAX_AGE = 30 * 24 * 60 * 60;
-const PUBLIC_FILES = ['index.html', 'style.css', 'auth.css', 'auth.js', 'main.js', 'polish.css', 'legal.css', 'terms.html', 'privacy.html', 'developers.html', 'favicon.svg', 'airhorn-original.m4a', 'aarti-original.m4a', 'dance-track.mp3'];
+const PUBLIC_FILES = ['index.html', 'style.css', 'auth.css', 'auth.js', 'main.js', 'polish.css', 'legal.css', 'terms.html', 'privacy.html', 'developers.html', 'favicon.svg', 'airhorn-original.m4a', 'aarti-original.m4a', 'dance-track.mp3',
+  'theme-arcade-cabinet.png', 'theme-arcade-invader.png', 'theme-arcade-ship.png', 'theme-arcade-star.png', 'theme-aurora-ribbon.png', 'theme-bubblegum-bubbles.png', 'theme-cosmic-planet.png', 'theme-cosmic-star.png', 'theme-cream-cup.png', 'theme-cyber-cube.png', 'theme-gameboy-handheld.png', 'theme-grape-cluster.png', 'theme-matcha-leaf.png', 'theme-midnight-moon.png', 'theme-ocean-bubble.png', 'theme-ocean-fish.png', 'theme-sakura-blossom.png', 'theme-sakura-petal.png', 'theme-sakura-sprig.png', 'theme-sunset-sun.png', 'theme-terminal-monitor.png', 'theme-theater-reel.png', 'theme-theater-ticket.png', 'theme-vapor-sun.png'] ;
 const MIME = {
   '.html': 'text/html; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
   '.svg': 'image/svg+xml',
+  '.png': 'image/png',
   '.wav': 'audio/wav',
   '.mp3': 'audio/mpeg',
   '.m4a': 'audio/mp4'

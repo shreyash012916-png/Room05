@@ -1496,6 +1496,7 @@
       ws = sock;
       myId = joined.id;
       inRoom = true;
+      startCallControlsIdle();
       applyRoomMode(joined.roomMode || requestedRoomMode);
       setStatus('CONNECTED', 'ok');
       startHeartbeat(); startStats(); acquireWakeLock();
@@ -1523,6 +1524,7 @@
       }
       console.error('ROOM/05 startup:', error);
       inRoom = false;
+      stopCallControlsIdle();
       stopHeartbeat(); stopStats(); releaseWakeLock();
       if (ws) { const active = ws; ws = null; try { active.close(); } catch (_) {} }
       cleanupMedia();
@@ -1553,6 +1555,7 @@
     // Idempotent: repeated taps cannot race the socket/media teardown.
     if (leaving || (!inRoom && !entering)) return;
     leaving = true; inRoom = false; entering = false; retryCount = 0;
+    stopCallControlsIdle();
     releaseRoomTab();
     clearActiveRoomEffect();
     stopHeartbeat(); stopStats(); releaseWakeLock(); document.body.classList.remove('in-call'); pinnedId = null;
@@ -2072,6 +2075,7 @@
       callScreen.classList.add('theater-immersive');
       document.body.classList.add('theater-immersive-active');
       syncTheaterImmersiveButton();
+      hideCallControlsNow();
       if (fsSupported && !isFs()) {
         try {
           if (fsRoot.requestFullscreen) await fsRoot.requestFullscreen({ navigationUI: 'hide' });
@@ -2082,6 +2086,7 @@
       callScreen.classList.remove('theater-immersive');
       document.body.classList.remove('theater-immersive-active');
       syncTheaterImmersiveButton();
+      showCallControls();
       if (isFs()) {
         try { const exit = document.exitFullscreen || document.webkitExitFullscreen; if (exit) await exit.call(document); } catch (_) {}
       }
@@ -2373,6 +2378,75 @@
   const reactionLauncher = $('reaction-launcher');
   const reactionPicker = $('reaction-picker');
   const reactionPickerClose = $('reaction-picker-close');
+  // Auto-hide the bottom call dock after ten seconds without interaction.
+  // Any touch/click, pointer movement or keyboard focus brings it back.
+  const callFooter = callScreen ? callScreen.querySelector('.call-footer') : null;
+  const CONTROL_IDLE_DELAY = 10000;
+  let controlIdleTimer = null;
+  function hasOpenRoomOverlay() {
+    const nodes = [reactionPicker, $('side-panel'), $('settings-overlay'), ...document.querySelectorAll('#call-screen .theme-pop')];
+    return nodes.some((node) => node && !node.classList.contains('hidden'));
+  }
+  function setCallControlsHidden(hidden) {
+    if (!callScreen || callScreen.classList.contains('hidden')) return;
+    const shouldHide = !!hidden;
+    callScreen.classList.toggle('controls-hidden', shouldHide);
+    if (callFooter) callFooter.setAttribute('aria-hidden', String(shouldHide));
+  }
+  function clearCallControlsTimer() {
+    if (controlIdleTimer) window.clearTimeout(controlIdleTimer);
+    controlIdleTimer = null;
+  }
+  function scheduleCallControlsHide() {
+    clearCallControlsTimer();
+    if (!inRoom || !callScreen || callScreen.classList.contains('hidden')) return;
+    controlIdleTimer = window.setTimeout(() => {
+      if (!inRoom) return;
+      const focusInsideDock = callFooter && callFooter.contains(document.activeElement);
+      if (hasOpenRoomOverlay() || focusInsideDock) {
+        scheduleCallControlsHide();
+        return;
+      }
+      setCallControlsHidden(true);
+    }, CONTROL_IDLE_DELAY);
+  }
+  function showCallControls() {
+    if (!callScreen || callScreen.classList.contains('hidden')) return;
+    setCallControlsHidden(false);
+    scheduleCallControlsHide();
+  }
+  function hideCallControlsNow() {
+    clearCallControlsTimer();
+    if (!inRoom) return;
+    if (hasOpenRoomOverlay()) { scheduleCallControlsHide(); return; }
+    setCallControlsHidden(true);
+  }
+  function startCallControlsIdle() {
+    setCallControlsHidden(false);
+    scheduleCallControlsHide();
+  }
+  function stopCallControlsIdle() {
+    clearCallControlsTimer();
+    if (callScreen) callScreen.classList.remove('controls-hidden');
+    if (callFooter) callFooter.setAttribute('aria-hidden', 'false');
+  }
+  function onCallActivity(event) {
+    if (!inRoom) return;
+    if (event && event.type === 'pointermove' && event.pointerType && event.pointerType !== 'mouse') return;
+    showCallControls();
+  }
+  if (callScreen) {
+    callScreen.addEventListener('pointerdown', onCallActivity, true);
+    callScreen.addEventListener('pointermove', onCallActivity, { passive: true });
+    callScreen.addEventListener('touchstart', onCallActivity, { passive: true });
+    callScreen.addEventListener('keydown', onCallActivity, true);
+    callScreen.addEventListener('focusin', onCallActivity, true);
+  }
+  document.addEventListener('visibilitychange', () => {
+    if (!inRoom) return;
+    if (document.hidden) clearCallControlsTimer();
+    else showCallControls();
+  });
   // Keep the floating palette inside the fullscreen root so it remains visible
   // during native fullscreen, but move it to the top of that root's children.
   if (reactionPicker && callScreen) callScreen.appendChild(reactionPicker);

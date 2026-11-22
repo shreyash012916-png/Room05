@@ -430,6 +430,11 @@ server.on('upgrade', (req, socket, head) => {
 const out = (ws, msg) => { if (ws.readyState === 1) ws.send(JSON.stringify(msg)); };
 
 wss.on('connection', (ws) => {
+  // Keep short signaling packets low-latency on supported Node sockets.
+  try {
+    if (ws._socket && typeof ws._socket.setNoDelay === 'function') ws._socket.setNoDelay(true);
+    if (ws._socket && typeof ws._socket.setKeepAlive === 'function') ws._socket.setKeepAlive(true, 15000);
+  } catch (_) {}
   let room = null;
   let me = null;
   ws.isAlive = true;

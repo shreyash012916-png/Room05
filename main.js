@@ -387,9 +387,15 @@
     const qq = qualityFor(1);
     const audioHi = voiceCaptureConstraints();
     const videoHi = { width: { ideal: qq.w }, height: { ideal: qq.h }, frameRate: { ideal: qq.fps }, facingMode: 'user' };
+    const markSpeechTracks = (media) => {
+      if (media && typeof media.getAudioTracks === 'function') {
+        media.getAudioTracks().forEach((track) => { try { track.contentHint = 'speech'; } catch (_) {} });
+      }
+      return media;
+    };
     // 1) both at once (best), 2) both with plain constraints
     for (const c of [{ audio: audioHi, video: videoHi }, { audio: true, video: true }]) {
-      try { return await gUM(c); } catch (_) { /* try next */ }
+      try { return markSpeechTracks(await gUM(c)); } catch (_) { /* try next */ }
     }
     // 3) get each device on its own so one failing never costs us the other
     const stream = new MediaStream();
@@ -399,7 +405,7 @@
     if (!gotV && !gotA) toast('No camera or microphone access — joining as a viewer. Tap the camera button to try again.');
     else if (!gotV) toast('Camera unavailable (blocked or in use) — tap the camera button to retry.');
     else if (!gotA) toast('Microphone unavailable — tap the mic button to retry.');
-    return stream;
+    return markSpeechTracks(stream);
   }
 
   // Try to get a missing camera/mic later (permission granted, other app released it, ...)
@@ -411,7 +417,7 @@
         : { audio: voiceCaptureConstraints() });
       const t = s2.getTracks()[0];
       if (!t) return null;
-      if (kind === 'video') { try { t.contentHint = 'motion'; } catch (_) {} }
+      try { t.contentHint = kind === 'video' ? 'motion' : 'speech'; } catch (_) {}
       localStream.addTrack(t);
       return t;
     } catch (_) { return null; }
@@ -1329,16 +1335,38 @@
         try {
           const stats = await p.pc.getStats();
           let remoteLoss = null;
+          let peerRtt = 0;
+          let inboundVideoLoss = null;
           stats.forEach((r) => {
-            if (r.type === 'candidate-pair' && r.state === 'succeeded' && r.nominated && typeof r.currentRoundTripTime === 'number') { any = true; worstRtt = Math.max(worstRtt, r.currentRoundTripTime * 1000); }
-            if (r.type === 'inbound-rtp' && r.kind === 'video' && r.packetsReceived > 100 && r.packetsLost / (r.packetsReceived + r.packetsLost) > 0.08) lossHigh = true;
-            if (r.type === 'remote-inbound-rtp' && r.kind === 'video' && typeof r.fractionLost === 'number') remoteLoss = Math.max(remoteLoss || 0, r.fractionLost);
+            if (r.type === 'candidate-pair' && r.state === 'succeeded' && r.nominated && typeof r.currentRoundTripTime === 'number') {
+              any = true;
+              peerRtt = Math.max(peerRtt, r.currentRoundTripTime * 1000);
+              worstRtt = Math.max(worstRtt, r.currentRoundTripTime * 1000);
+            }
+            if (r.type === 'inbound-rtp' && r.kind === 'video' && r.packetsReceived > 100) {
+              const total = r.packetsReceived + (r.packetsLost || 0);
+              if (total > 0) inboundVideoLoss = Math.max(inboundVideoLoss || 0, (r.packetsLost || 0) / total);
+            }
+            if (r.type === 'remote-inbound-rtp' && r.kind === 'video' && typeof r.fractionLost === 'number') {
+              remoteLoss = Math.max(remoteLoss === null ? 0 : remoteLoss, r.fractionLost);
+            }
           });
-          if (remoteLoss !== null && p.vsender) {
-            if (remoteLoss > 0.08) { p.lossHighCount++; p.lossGoodCount = 0; }
-            else if (remoteLoss < 0.025) { p.lossGoodCount++; p.lossHighCount = 0; }
-            if (p.lossHighCount >= 2) { p.bitrateScale = Math.max(0.35, (p.bitrateScale || 1) * 0.72); p.lossHighCount = 0; tuneVideoSender(p.vsender, p); }
-            else if (p.lossGoodCount >= 5) { p.bitrateScale = Math.min(1, (p.bitrateScale || 1) + 0.12); p.lossGoodCount = 0; tuneVideoSender(p.vsender, p); }
+          const observedLoss = remoteLoss !== null ? remoteLoss : inboundVideoLoss;
+          const congested = (observedLoss !== null && observedLoss > 0.08) || peerRtt > 350;
+          const recovering = (observedLoss === null || observedLoss < 0.025) && (!peerRtt || peerRtt < 180);
+          if (congested) lossHigh = true;
+          if (p.vsender) {
+            if (congested) { p.lossHighCount++; p.lossGoodCount = 0; }
+            else if (p.pc.connectionState === 'connected' && recovering) { p.lossGoodCount++; p.lossHighCount = 0; }
+            if (p.lossHighCount >= 2) {
+              p.bitrateScale = Math.max(0.35, (p.bitrateScale || 1) * 0.72);
+              p.lossHighCount = 0;
+              tuneVideoSender(p.vsender, p);
+            } else if (p.lossGoodCount >= 5) {
+              p.bitrateScale = Math.min(1, (p.bitrateScale || 1) + 0.12);
+              p.lossGoodCount = 0;
+              tuneVideoSender(p.vsender, p);
+            }
           }
         } catch (_) {}
       }

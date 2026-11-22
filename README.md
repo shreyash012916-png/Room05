@@ -1,4 +1,13 @@
-# ROOM/05 v6.10.3
+# ROOM/05 v6.11.0
+
+## v6.11.0 cinema auditorium and meeting refinements
+- Theater mode now uses a full cinematic auditorium ambience with a large shared screen, red velvet-inspired curtains, warm aisle lighting, and a row of participant video tiles styled as cinema seats. The participant strip remains compact so the shared movie/screen is the focus.
+- Theater chat/people panels overlay the auditorium rather than shrinking the main screen; mobile uses a lower drawer-style panel.
+- Added more quick reactions for normal calls (🫶, 👀, 🚀, 🤡, 🥹). Existing room reactions and sound effects remain.
+- Video bitrate adaptation now considers peer round-trip time as well as packet loss; voice retains high sender priority.
+- Signaling WebSockets enable TCP no-delay and keepalive where supported.
+- Existing shared media, Android browser capability handling, account/legal pages, supplied audio files, dance/aarti/airhorn effects and previous controls are retained.
+
 
 ## v6.10.3 final UI layering and dance effect timing
 - Live-room profile and theme menus now have a dedicated top stacking layer above participant video tiles and the room body.

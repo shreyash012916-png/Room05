@@ -1,8 +1,8 @@
 {
   "name": "room05-p2p-video-rooms",
-  "version": "6.10.3",
+  "version": "6.11.0",
   "private": true,
-  "description": "ROOM/05 peer-to-peer rooms with adaptive mesh media, shared theater playback and PostgreSQL accounts",
+  "description": "ROOM/05 peer-to-peer rooms with cinematic theater auditorium, shared playback and PostgreSQL accounts",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"

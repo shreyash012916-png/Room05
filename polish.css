@@ -620,3 +620,364 @@ button, a, input, select { -webkit-tap-highlight-color: transparent; }
 #call-screen > .call-topbar .theme-pop {
   z-index: 9003 !important;
 }
+
+
+/* ROOM/05 v6.11.0 — cinema auditorium: one large shared screen, cinematic hall and seated participant strip. */
+.call-screen.theater-mode {
+  height: 100vh;
+  height: 100dvh;
+  min-height: 620px;
+  overflow: hidden;
+  color: #f4ecdf;
+  background: #07070a;
+  --cinema-gold: #d6ac70;
+  --cinema-red: #6d1425;
+  --cinema-ink: #08090d;
+}
+.call-screen.theater-mode > .call-topbar,
+.call-screen.theater-mode > .call-footer {
+  flex: 0 0 auto;
+  color: #d6c9ba;
+  background: linear-gradient(180deg, #171116, #0d0b10);
+  border-color: rgba(225,190,149,.17);
+}
+.call-screen.theater-mode .brand-text,
+.call-screen.theater-mode .room-code-label strong,
+.call-screen.theater-mode .icon-text-button,
+.call-screen.theater-mode .call-footer .footer-room-label b,
+.call-screen.theater-mode .control-label { color: #f2e8d9; }
+.call-screen.theater-mode .connection-pill,
+.call-screen.theater-mode .square-action,
+.call-screen.theater-mode .control-button {
+  color: #f2e8d9;
+  background: rgba(255,255,255,.055);
+  border-color: rgba(235,211,177,.2);
+}
+.call-screen.theater-mode .control-button:hover,
+.call-screen.theater-mode .control-button.is-active { background: rgba(214,172,112,.16); border-color: var(--cinema-gold); }
+.call-screen.theater-mode .leave-button { box-shadow: 0 4px 0 #350b14; }
+.call-screen.theater-mode .call-body {
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  flex: 1 1 auto;
+  width: 100%;
+  max-width: none;
+  min-height: 0;
+  overflow: auto;
+  gap: 0;
+  padding: clamp(9px, 1.5vh, 18px) clamp(10px, 2.2vw, 34px);
+  background:
+    radial-gradient(ellipse at 50% 9%, rgba(143,67,47,.27), transparent 38%),
+    linear-gradient(180deg, #100c12 0%, #08090d 67%, #100b10 100%);
+}
+.call-screen.theater-mode .stage-area {
+  position: relative;
+  z-index: 1;
+  isolation: isolate;
+  width: 100%;
+  min-height: 0;
+  gap: clamp(7px, 1vh, 12px);
+  padding: 4px clamp(5px, 1.3vw, 18px) 8px;
+  overflow: hidden;
+}
+.call-screen.theater-mode .stage-area::before {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  pointer-events: none;
+  background:
+    repeating-linear-gradient(90deg, rgba(255,211,165,.055) 0 2px, transparent 2px 13px),
+    linear-gradient(90deg, #2b0d16 0%, #561624 3.5%, #210b12 10%, transparent 18%, transparent 82%, #210b12 90%, #561624 96.5%, #2b0d16 100%),
+    radial-gradient(ellipse at 50% 0%, rgba(229,177,119,.14), transparent 52%);
+  opacity: .66;
+}
+.call-screen.theater-mode .stage-area::after {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  left: 5%; right: 5%; bottom: 0;
+  height: 22%;
+  pointer-events: none;
+  background:
+    linear-gradient(180deg, transparent, rgba(0,0,0,.2)),
+    repeating-linear-gradient(90deg, transparent 0 12%, rgba(218,175,117,.1) 12.1% 12.25%, transparent 12.4% 24%);
+  transform: perspective(420px) rotateX(16deg);
+  transform-origin: bottom center;
+  opacity: .45;
+}
+.call-screen.theater-mode .stage-area > * { position: relative; z-index: 1; }
+.call-screen.theater-mode .stage-heading {
+  flex: 0 0 auto;
+  align-items: center;
+  margin: 0 auto 2px;
+  width: min(100%, 1360px);
+  padding: 0 4px;
+  color: #f1e6d7;
+}
+.call-screen.theater-mode .stage-kicker { color: #c89d74; letter-spacing: .19em; }
+.call-screen.theater-mode .stage-heading h2 {
+  margin-top: 3px;
+  color: #fff7ec;
+  font-size: clamp(20px, 2.1vw, 29px);
+  letter-spacing: -.055em;
+  text-shadow: 0 2px 18px rgba(214,172,112,.18);
+}
+.call-screen.theater-mode .heading-period { color: #d9a36f; }
+.call-screen.theater-mode .stage-count { color: #b8a89b; }
+.call-screen.theater-mode .stage-count strong { color: #fff2e1; }
+.call-screen.theater-mode .theater-controls {
+  flex: 0 0 auto;
+  width: min(100%, 1360px);
+  margin: 0 auto 2px;
+  padding: 8px 10px;
+  border: 1px solid rgba(214,172,112,.28);
+  border-left: 3px solid #a52c42;
+  background: rgba(13,10,14,.88);
+  box-shadow: 0 5px 20px rgba(0,0,0,.25);
+  backdrop-filter: blur(8px);
+}
+.call-screen.theater-mode .theater-controls > span { color: #c1b2a4; font-size: 8px; }
+.call-screen.theater-mode .theater-media-button {
+  min-height: 36px;
+  border: 1px solid #d0a270;
+  background: #6e1a2a;
+  color: #fff5e8;
+  box-shadow: 0 3px 0 #290911;
+}
+.call-screen.theater-mode .theater-share-button { background: #171217; color: #f7ead9; }
+.call-screen.theater-mode .theater-media-button:hover { background: #963047; }
+.call-screen.theater-mode .theater-stage {
+  position: relative;
+  z-index: 1;
+  flex: 1 1 auto;
+  width: min(100%, 1360px);
+  height: min(50vh, 640px);
+  min-height: 260px;
+  max-height: 56vh;
+  aspect-ratio: 16 / 9;
+  margin: 0 auto;
+  overflow: hidden;
+  border: 9px solid #211a1d;
+  outline: 1px solid rgba(222,181,131,.65);
+  border-radius: 3px;
+  background: #020306;
+  box-shadow:
+    0 0 0 3px #08070a,
+    0 0 0 5px rgba(145,85,54,.48),
+    0 0 45px rgba(218,165,99,.17),
+    0 16px 34px rgba(0,0,0,.62);
+}
+.call-screen.theater-mode .theater-stage::before {
+  content: "";
+  position: absolute;
+  z-index: 2;
+  inset: 0;
+  pointer-events: none;
+  border: 1px solid rgba(255,230,194,.22);
+  box-shadow: inset 0 0 45px rgba(0,0,0,.33);
+}
+.call-screen.theater-mode .theater-stage video {
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #020306;
+}
+.call-screen.theater-mode .theater-empty {
+  background:
+    radial-gradient(ellipse at 50% 38%, rgba(128,53,48,.35), transparent 54%),
+    linear-gradient(135deg, #141016, #030407 68%);
+}
+.call-screen.theater-mode .theater-empty > span {
+  color: #dfb47d;
+  font: 700 10px var(--mono);
+  letter-spacing: .34em;
+  text-shadow: 0 0 22px rgba(221,166,104,.38);
+}
+.call-screen.theater-mode .theater-empty strong {
+  font: 800 clamp(16px, 2.2vw, 27px) var(--display);
+  letter-spacing: .13em;
+  text-shadow: 0 3px 18px rgba(0,0,0,.8);
+}
+.call-screen.theater-mode .theater-empty p { color: #c5b8ad; font: 9px/1.7 var(--mono); }
+.call-screen.theater-mode .theater-live-pill {
+  top: 12px; left: 12px;
+  padding: 7px 10px;
+  color: #f8e9d6;
+  background: rgba(9,7,10,.78);
+  border: 1px solid rgba(230,190,142,.4);
+  letter-spacing: .18em;
+}
+.call-screen.theater-mode .video-grid {
+  position: relative;
+  isolation: isolate;
+  flex: 0 0 auto;
+  width: min(100%, 1360px);
+  height: 158px;
+  min-height: 148px;
+  max-height: 166px;
+  margin: 1px auto 0;
+  padding: 10px 12px 17px;
+  display: flex;
+  flex-flow: row nowrap;
+  align-items: flex-end;
+  justify-content: center;
+  gap: clamp(10px, 1.55vw, 23px);
+  overflow-x: auto;
+  overflow-y: hidden;
+  perspective: 1000px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(214,172,112,.55) rgba(255,255,255,.06);
+  background:
+    radial-gradient(ellipse at 50% 8%, rgba(214,172,112,.13), transparent 56%),
+    linear-gradient(180deg, rgba(7,7,10,.05), rgba(4,4,7,.52));
+  border-bottom: 1px solid rgba(214,172,112,.2);
+}
+.call-screen.theater-mode .video-grid .video-tile {
+  position: relative;
+  isolation: isolate;
+  flex: 0 0 clamp(126px, 15vw, 190px);
+  width: clamp(126px, 15vw, 190px);
+  height: 140px;
+  min-height: 140px;
+  overflow: visible;
+  border: 0;
+  border-radius: 15px 15px 8px 8px;
+  background: transparent;
+  color: #f8eadd;
+  box-shadow: none;
+  transform: perspective(900px) rotateX(-1.5deg);
+}
+.call-screen.theater-mode .video-grid .video-tile::before {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  inset: 0 3px 7px;
+  pointer-events: none;
+  border: 1px solid rgba(255,199,175,.2);
+  border-radius: 16px 16px 8px 8px;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.13), transparent 14%),
+    linear-gradient(155deg, #a52c43 0%, #6a1023 46%, #380a15 100%);
+  box-shadow:
+    inset 0 5px 10px rgba(255,255,255,.12),
+    inset 0 -9px 12px rgba(0,0,0,.24),
+    0 8px 0 #260710,
+    0 13px 17px rgba(0,0,0,.5);
+}
+.call-screen.theater-mode .video-grid .video-tile::after {
+  content: "";
+  position: absolute;
+  z-index: 1;
+  left: 0; right: 0; bottom: 14px;
+  height: 8px;
+  pointer-events: none;
+  border-radius: 4px;
+  background: linear-gradient(90deg, #3a0b14, #ab3146 8%, transparent 16% 84%, #ab3146 92%, #3a0b14);
+  opacity: .9;
+}
+.call-screen.theater-mode .video-grid .video-stage {
+  position: relative;
+  z-index: 2;
+  min-height: 0;
+  flex: 1 1 auto;
+  margin: 8px 10px 0;
+  overflow: hidden;
+  border: 1px solid rgba(255,226,198,.24);
+  border-radius: 12px 12px 4px 4px;
+  background: #09070b;
+  box-shadow: 0 0 0 3px rgba(35,6,13,.65);
+}
+.call-screen.theater-mode .video-grid .tile-footer {
+  position: relative;
+  z-index: 3;
+  min-height: 26px;
+  height: 26px;
+  margin: 0 7px 7px;
+  padding: 0 7px;
+  border: 1px solid rgba(255,209,179,.13);
+  border-radius: 0 0 7px 7px;
+  background: linear-gradient(180deg, #2a0b13, #10070b);
+  color: #f8eadd;
+}
+.call-screen.theater-mode .video-grid .tile-name { color: #fff3e7; font: 600 9px var(--display); }
+.call-screen.theater-mode .video-grid .tile-status { color: #d0b7a7; font: 7px var(--mono); }
+.call-screen.theater-mode .video-grid .tile-role { padding: 4px 6px; font-size: 7px; }
+.call-screen.theater-mode .video-grid .tile-actions { top: 5px; right: 5px; }
+.call-screen.theater-mode .video-grid .tile-actions button { width: 23px; height: 23px; font-size: 11px; }
+.call-screen.theater-mode .video-grid .speaking-ring { inset: 6px; border-radius: 10px; }
+.call-screen.theater-mode .stage-bottomline {
+  flex: 0 0 auto;
+  width: min(100%, 1360px);
+  margin: 0 auto;
+  padding: 5px 3px 0;
+  color: #bcae9f;
+  border-top: 1px solid rgba(214,172,112,.15);
+}
+.call-screen.theater-mode .quick-reactions button {
+  background: rgba(255,255,255,.06);
+  color: #fff2e2;
+  border-color: rgba(226,189,149,.18);
+}
+.call-screen.theater-mode .quick-reactions button:hover { background: rgba(214,172,112,.2); border-color: var(--cinema-gold); }
+.call-screen.theater-mode .side-panel {
+  position: absolute;
+  z-index: 60;
+  top: 15px; right: 15px; bottom: 15px;
+  width: min(320px, 34vw);
+  flex: 0 0 auto;
+  color: #f2e7d9;
+  border: 1px solid rgba(214,172,112,.35);
+  border-radius: 3px;
+  background: rgba(17,12,17,.97);
+  box-shadow: 0 18px 50px rgba(0,0,0,.62);
+  backdrop-filter: blur(12px);
+}
+.call-screen.theater-mode .side-panel .panel-header { border-color: rgba(214,172,112,.2); }
+.call-screen.theater-mode .side-panel .panel-header h3,
+.call-screen.theater-mode .side-panel .participant-details strong,
+.call-screen.theater-mode .side-panel .chat-empty strong { color: #fff1e0; }
+.call-screen.theater-mode .side-panel .participant-row,
+.call-screen.theater-mode .side-panel .chat-compose { border-color: rgba(214,172,112,.2); background: rgba(255,255,255,.045); }
+.call-screen.theater-mode .side-panel .chat-compose input { color: #fff1e0; background: #171016; }
+.call-screen.theater-mode .side-panel .close-panel { background: rgba(255,255,255,.07); color: #f2e7d9; }
+.call-screen.theater-mode .stage-bottomline > span:first-child { color: #c9b7a6; }
+.call-screen.theater-mode .call-footer .control-label { color: #c6b9ac; }
+
+@media (max-width: 900px) {
+  .call-screen.theater-mode { min-height: 560px; }
+  .call-screen.theater-mode .theater-stage { height: min(50vh, 560px); min-height: 245px; max-height: 58vh; }
+  .call-screen.theater-mode .video-grid { justify-content: flex-start; }
+}
+@media (max-width: 650px) {
+  .call-screen.theater-mode { min-height: 100vh; min-height: 100dvh; height: auto; overflow: visible; }
+  .call-screen.theater-mode .call-body { overflow: auto; padding: 8px 8px 12px; }
+  .call-screen.theater-mode .stage-area { padding: 4px 2px 8px; }
+  .call-screen.theater-mode .stage-heading { margin-bottom: 2px; }
+  .call-screen.theater-mode .theater-stage {
+    width: 100%; height: 43vh; min-height: 230px; max-height: 440px;
+    aspect-ratio: 16 / 10; border-width: 6px;
+    box-shadow: 0 0 0 2px #08070a, 0 0 0 4px rgba(145,85,54,.4), 0 10px 24px rgba(0,0,0,.6);
+  }
+  .call-screen.theater-mode .theater-controls { padding: 7px; gap: 7px; }
+  .call-screen.theater-mode .theater-controls > span { flex-basis: 100%; line-height: 1.45; }
+  .call-screen.theater-mode .theater-media-button { flex: 1 1 42%; min-height: 37px; font-size: 8px; padding: 0 7px; }
+  .call-screen.theater-mode .video-grid {
+    width: 100%; height: 138px; min-height: 130px; max-height: 144px;
+    justify-content: flex-start; gap: 10px; padding: 8px 7px 15px;
+  }
+  .call-screen.theater-mode .video-grid .video-tile { flex-basis: 145px; width: 145px; height: 116px; min-height: 116px; }
+  .call-screen.theater-mode .video-grid .video-stage { margin: 7px 8px 0; }
+  .call-screen.theater-mode .video-grid .tile-footer { min-height: 23px; height: 23px; margin: 0 6px 6px; }
+  .call-screen.theater-mode .stage-bottomline { padding: 7px 2px 0; }
+  .call-screen.theater-mode .side-panel {
+    top: auto; left: 8px; right: 8px; bottom: 8px;
+    width: auto; height: min(52vh, 390px); max-height: 390px;
+  }
+  .call-screen.theater-mode .call-footer { position: sticky; bottom: 0; z-index: 80; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .call-screen.theater-mode .video-grid .video-tile { transform: none; }
+}

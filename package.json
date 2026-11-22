@@ -1,0 +1,10 @@
+{
+  "name": "room05-p2p-video-rooms",
+  "version": "6.2.0",
+  "private": true,
+  "description": "ROOM/05 peer-to-peer WebRTC rooms with local username/password accounts and persistent consent records",
+  "main": "server.js",
+  "scripts": { "start": "node server.js" },
+  "dependencies": { "ws": "^8.18.0" },
+  "engines": { "node": ">=18" }
+}

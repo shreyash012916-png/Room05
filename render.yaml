@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: room05
+    runtime: node
+    plan: starter
+    numInstances: 1
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    disk:
+      name: room05-accounts
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: MAX_PEOPLE
+        value: "5"
+      - key: DATA_DIR
+        value: /var/data

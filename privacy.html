@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#e9e6dc" />
+  <meta name="description" content="ROOM/05 privacy policy and data handling information." />
+  <title>Privacy Policy — ROOM/05</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <link rel="stylesheet" href="/style.css" />
+  <link rel="stylesheet" href="/legal.css" />
+  <script>try{var t=localStorage.getItem("room05-theme")||"auto";if(t==="auto")t=matchMedia("(prefers-color-scheme: dark)").matches?"midnight":"cream";document.documentElement.dataset.theme=t;document.documentElement.dataset.mode=/^(midnight|grape|sunset|cyber|terminal|vapor|aurora)$/.test(t)?"dark":"light";}catch(e){}</script>
+</head>
+<body class="legal-page">
+  <header class="legal-header">
+    <a class="brand" href="/" aria-label="ROOM/05 home"><span class="brand-mark"><span></span><span></span><span></span></span><span>ROOM<span class="brand-slash">/</span>05</span></a>
+    <a class="legal-back" href="/">← BACK TO ROOM/05</a>
+  </header>
+  <main class="legal-main">
+    <div class="legal-kicker"><i></i> YOUR DATA. YOUR CALL.</div>
+    <h1>Privacy<br />policy<span class="heading-period">.</span></h1>
+    <p class="legal-intro">This policy explains what ROOM/05 handles when you create an account, sign in, join a room and use the website.</p>
+    <div class="legal-meta"><span>LAST UPDATED: 22 NOVEMBER 2026</span><span>VERSION 1.1</span><span>APPLIES TO ROOM/05</span></div>
+    <div class="legal-callout"><strong>THE MAIN POINT</strong><p>ROOM/05 stores your username, permanent user ID, a salted password hash and your legal-consent record on the ROOM/05 server's persistent storage. Your actual password is not stored in plain text. Live room membership and chat are handled in server memory. Audio and video are sent between participants using WebRTC rather than being intentionally stored by the ROOM/05 application.</p></div>
+    <div class="legal-content">
+      <nav class="legal-toc" aria-label="On this page">
+        <strong>ON THIS PAGE</strong>
+        <a href="#accounts">1. Account information</a>
+        <a href="#media">2. Audio and video</a>
+        <a href="#messages">3. Chat and signaling</a>
+        <a href="#device">4. Device storage</a>
+        <a href="#providers">5. Hosting and providers</a>
+        <a href="#retention">6. Retention</a>
+        <a href="#security">7. Security</a>
+        <a href="#choices">8. Your choices</a>
+        <a href="#updates">9. Policy updates</a>
+      </nav>
+      <div class="legal-sections">
+        <section class="legal-section" id="accounts"><h2>1. Account information</h2><p>When you create an account, ROOM/05 stores your username, a randomly generated permanent ROOM/05 user ID, a random password salt, a one-way password hash, and account creation time. Your password itself is not stored in plain text. Password verification uses Node.js scrypt with a unique salt for each account.</p><p>ROOM/05 does not request an email address, phone number, real name or social-media account. The server also stores the versions of the Terms &amp; Conditions and Privacy Policy you accepted, along with the acceptance time. When you sign in, the server handles your account ID to create a signed, HTTP-only session cookie.</p><p>There is currently no self-service account deletion, email verification or password-reset feature. The project operator must manage account-record deletion. If you forget your password, the service cannot automatically recover it.</p></section>
+        <section class="legal-section" id="media"><h2>2. Audio, video and screen capture</h2><p>When you grant permission, your browser captures audio from your microphone and video from your camera. Screen capture is requested only when you activate the Share control and the browser supports it. The resulting media streams are transmitted to other participants using WebRTC.</p><p>In the normal configuration, media travels directly between participants. If a network requires a TURN relay and the hosting operator configures one, media packets may travel through that relay. ROOM/05 does not create or store call recordings by default. Other participants may still capture what they see or hear using their own devices, so do not share anything you expect to remain confidential.</p></section>
+        <section class="legal-section" id="messages"><h2>3. Chat, reactions and connection signaling</h2><p>The ROOM/05 server relays room invitations, WebRTC connection setup information, participant status, chat messages and reactions to the relevant room participants. The server keeps current room membership and status in process memory while connections are active.</p><p>The application code does not write chat messages or call media to the account store. Signaling data is used to establish peer connections and is not intended to be a permanent message archive.</p></section>
+        <section class="legal-section" id="device"><h2>4. Information stored on your device</h2><p>Theme, video-quality and a few interface preferences are saved in your browser's local storage. A random tab-session identifier is saved in session storage so a reconnect can resume the same participant slot instead of appearing as a second person. The accepted legal-consent version is saved in local storage while the browser user is signed in. Signing out clears that marker so the next sign-in is preceded by the agreement prompt.</p><p>Your browser also stores the signed session cookie. The cookie is HTTP-only, so normal page scripts cannot read it. You can clear this website's browser storage and cookies through your browser settings. Clearing cookies signs you out; you can sign in again with your username and password.</p></section>
+        <section class="legal-section" id="providers"><h2>5. Hosting and technical providers</h2><p>The website, signaling server and account storage are hosted on Render. The account file is written to the service's persistent disk. Render may process connection information, request metadata and infrastructure logs as part of operating and protecting its hosting platform. The project is configured for a single service instance because its room list and local account file are not shared between multiple instances.</p><p>The site loads fonts from Google Fonts. For network discovery, the default WebRTC configuration contacts public STUN services operated by Google and Cloudflare. If a TURN service is configured by the operator, that provider may relay media traffic. These providers operate under their own terms and privacy practices.</p></section>
+        <section class="legal-section" id="retention"><h2>6. Retention</h2><p>Account records remain in persistent server storage until the project operator deletes them or removes the storage. The application does not currently provide a self-service account-deletion function. The permanent user ID remains associated with the account record for as long as that record is retained.</p><p>Active room membership and participant status exist in server memory while participants are connected. They are removed when the connection closes or the server detects that it is no longer live. The ROOM/05 application does not keep a persistent database of chat messages, participant histories or call recordings. Hosting providers may retain operational logs according to their own policies.</p></section>
+        <section class="legal-section" id="security"><h2>7. Security</h2><p>Passwords are processed with salted scrypt hashes, and the browser session is carried in a signed HTTP-only cookie. These measures reduce exposure but do not guarantee that an account or device can never be compromised. Use a unique password, keep your device secure and sign out on shared devices.</p><p>WebRTC media transport uses browser-managed encryption in transit. That does not make every participant trustworthy, protect an unlocked device, or prevent someone from recording their own screen or speaker output. Anyone who has a valid room code may attempt to join while a place is available.</p></section>
+        <section class="legal-section" id="choices"><h2>8. Your choices</h2><p>You can decline camera or microphone permissions, switch those devices off during a call, leave a room, sign out, avoid using identifying information in your display name, and clear the website's local browser storage. Do not use a password that you use elsewhere. If you do not agree with this policy, do not use the service.</p></section>
+        <section class="legal-section" id="updates"><h2>9. Policy updates</h2><p>This policy may be updated when the application's features, hosting or data handling changes. The revision date and version at the top indicate the latest published policy. When a policy version changes, ROOM/05 will show the consent prompt again before continued use.</p><p>This is a plain-language project policy and is not legal advice. The project owner should have it reviewed by a qualified adult or legal professional before making the service broadly public.</p></section>
+      </div>
+    </div>
+    <footer class="legal-footer"><span>ROOM/05 © 2026</span><span><a href="/terms.html">TERMS &amp; CONDITIONS</a> · <a href="/">HOME</a></span></footer>
+  </main>
+</body>
+</html>

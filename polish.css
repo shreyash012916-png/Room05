@@ -434,3 +434,119 @@ button, a, input, select { -webkit-tap-highlight-color: transparent; }
   .call-screen.theater-mode .theater-controls>span { flex-basis:100%; }
   .aarti-orbit span { font-size:19px; transform:rotate(calc(var(--orbit-index) * 45deg)) translateY(-100px) rotate(calc(var(--orbit-index) * -45deg)); }
 }
+
+/* ROOM/05 v6.8 — sharper theater framing, touch-safe app-share affordance and a single full-room aarti orbit. */
+.site-credit {
+  display: inline-block;
+  margin-left: 8px;
+  color: var(--muted);
+  opacity: .68;
+  font: 8px/1.2 var(--mono);
+  letter-spacing: .045em;
+  white-space: nowrap;
+}
+.theater-controls {
+  gap: 9px;
+  padding: 10px;
+  border: 1px solid var(--line-strong);
+  border-left: 4px solid var(--red);
+  background: var(--paper-2);
+  box-shadow: 4px 4px 0 var(--shadow-c);
+}
+.theater-media-button {
+  min-height: 39px;
+  padding: 0 14px;
+  border: 2px solid var(--ink);
+  border-radius: 0;
+  box-shadow: 3px 3px 0 var(--red);
+  font-weight: 700;
+  transition: transform .16s ease, box-shadow .16s ease, background .16s ease;
+}
+.theater-media-button:active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 var(--red); }
+.theater-share-button { background: var(--paper); color: var(--ink); }
+.theater-share-button:hover { color: var(--paper); }
+.theater-controls > span { max-width: 100%; line-height: 1.55; }
+.call-screen.theater-mode .theater-stage {
+  min-height: clamp(210px, 34vh, 420px);
+  max-height: 48vh;
+  aspect-ratio: 16 / 9;
+  border: 2px solid var(--ink);
+  border-radius: 0;
+  box-shadow: 8px 8px 0 var(--shadow-c), 0 0 0 1px rgba(255,255,255,.06);
+  background:
+    linear-gradient(135deg, rgba(255,255,255,.035) 25%, transparent 25%) 0 0/18px 18px,
+    #090b0c;
+}
+.call-screen.theater-mode .theater-stage video { object-fit: contain; }
+.call-screen.theater-mode .theater-live-pill {
+  top: 12px; left: 12px; padding: 7px 10px;
+  border: 1px solid rgba(255,255,255,.25);
+  background: rgba(0,0,0,.76);
+  box-shadow: 3px 3px 0 rgba(0,0,0,.45);
+}
+.call-screen.theater-mode .video-grid .video-tile {
+  border-radius: 0;
+  border: 1px solid var(--line-strong);
+  box-shadow: 3px 3px 0 var(--shadow-c);
+}
+.call-screen.theater-mode .stage-heading h2 { letter-spacing: -.07em; }
+.call-screen.theater-mode .theater-controls,
+.call-screen.theater-mode .theater-stage,
+.call-screen.theater-mode .video-grid { transition: border-color .2s ease, box-shadow .2s ease; }
+
+/* One diya travels around the viewport edge; call controls and tiles remain above it. */
+#call-screen { position: relative; isolation: isolate; }
+#call-screen > .call-topbar,
+#call-screen > .call-body,
+#call-screen > .call-footer { position: relative; z-index: 2; }
+#call-screen > .aarti-orbit {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  border: 0;
+  border-radius: 0;
+  background: radial-gradient(ellipse at center, rgba(255,164,61,.065), transparent 56%);
+  animation: aarti-room-glow 2.4s ease-in-out infinite alternate;
+}
+.aarti-orbit .aarti-diya {
+  position: absolute;
+  left: 50%; top: 50%;
+  display: block;
+  font-size: clamp(29px, 4.3vw, 46px);
+  line-height: 1;
+  filter: drop-shadow(0 0 8px rgba(255,151,45,.9)) drop-shadow(0 0 24px rgba(255,179,73,.78));
+  will-change: transform;
+  animation: aarti-perimeter 7.2s linear infinite, aarti-diya-glow 1.15s ease-in-out infinite alternate;
+}
+@keyframes aarti-perimeter {
+  0% { transform: translate(-50%,-50%) translate(0,-43vh) rotate(-8deg); }
+  25% { transform: translate(-50%,-50%) translate(43vw,0) rotate(6deg); }
+  50% { transform: translate(-50%,-50%) translate(0,43vh) rotate(-7deg); }
+  75% { transform: translate(-50%,-50%) translate(-43vw,0) rotate(7deg); }
+  100% { transform: translate(-50%,-50%) translate(0,-43vh) rotate(-8deg); }
+}
+@keyframes aarti-diya-glow {
+  from { filter: drop-shadow(0 0 5px rgba(255,151,45,.65)) drop-shadow(0 0 14px rgba(255,179,73,.45)); }
+  to { filter: drop-shadow(0 0 12px rgba(255,151,45,1)) drop-shadow(0 0 30px rgba(255,179,73,.9)); }
+}
+@keyframes aarti-room-glow {
+  from { opacity: .52; }
+  to { opacity: 1; }
+}
+@media (max-width: 650px) {
+  .call-screen.theater-mode .theater-stage {
+    min-height: 230px;
+    max-height: 48vh;
+    aspect-ratio: 16 / 10;
+    box-shadow: 4px 4px 0 var(--shadow-c);
+  }
+  .theater-controls { padding: 8px; gap: 8px; }
+  .theater-media-button { flex: 1 1 auto; min-height: 38px; font-size: 8px; }
+  .aarti-diya { font-size: 31px; }
+  .site-credit { font-size: 7px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .aarti-diya, #call-screen > .aarti-orbit { animation-duration: .01ms !important; animation-iteration-count: 1 !important; }
+}

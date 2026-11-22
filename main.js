@@ -211,13 +211,23 @@
     if (window.matchMedia) matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { if (store.get('theme', 'auto') === 'auto') applyTheme('auto'); });
   }
 
-  // tiny haptics + sound blips (no audio files needed)
+  // tiny haptics + sound blips (with a bundled local meme horn asset)
+  function unlockRoomAudio() {
+    if (!prefs.sound) return;
+    try {
+      audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+      if (audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
+    } catch (_) {}
+  }
+  // Unlock once on the first real tap/key interaction, before media events arrive.
+  document.addEventListener('pointerdown', unlockRoomAudio, { once: true, capture: true, passive: true });
+  document.addEventListener('keydown', unlockRoomAudio, { once: true, capture: true });
   function buzz(ms) { if (prefs.sound && navigator.vibrate) { try { navigator.vibrate(ms || 8); } catch (_) {} } }
   function blip(kind) {
     if (!prefs.sound) return;
     try {
       audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
-      if (audioCtx.state === 'suspended') audioCtx.resume();
+      if (audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
       const notes = kind === 'join' ? [660, 880] : kind === 'leave' ? [660, 440] : [880];
       notes.forEach((f, i) => {
         const o = audioCtx.createOscillator(); const g = audioCtx.createGain();
@@ -554,6 +564,7 @@
   async function attachSenders(p, at, vt, st) {
     p.asender = at ? at.sender : null;
     p.vsender = vt ? vt.sender : null;
+    p.cameraTransceiver = vt || p.cameraTransceiver || null;
     p.screenSender = st ? st.sender : null;
     p.screenTransceiver = st || p.screenTransceiver || null;
     p.attached = true;
@@ -579,6 +590,8 @@
     const videos = live.filter((t) => t.receiver.track.kind === 'video');
     const vt = videos[0] || null;
     const st = videos[1] || null;
+    p.cameraTransceiver = vt;
+    p.screenTransceiver = st;
     [at, vt, st].forEach((t) => { if (t) { try { t.direction = 'sendrecv'; } catch (_) {} } });
     await attachSenders(p, at, vt, st);
   }
@@ -600,8 +613,8 @@
 
   function createPeer(id, name, initiator) {
     if (peers.has(id)) return peers.get(id);
-    const pc = new RTCPeerConnection({ iceServers: config.iceServers, bundlePolicy: 'max-bundle', iceCandidatePoolSize: 4 });
-    const p = { id, name, pc, polite: myId > id, initiator: !!initiator, makingOffer: false, ignoreOffer: false, stream: new MediaStream(), screenStream: new MediaStream(), state: { mic: true, cam: true, screen: false, hand: false }, vsender: null, asender: null, screenSender: null, screenTransceiver: null, tile: null, connState: 'connecting', queue: Promise.resolve(), pendingCandidates: [], attached: false, watchdog: null, bitrateScale: 1, lossHighCount: 0, lossGoodCount: 0 };
+    const pc = new RTCPeerConnection({ iceServers: config.iceServers, bundlePolicy: 'max-bundle', iceCandidatePoolSize: 10, iceTransportPolicy: 'all' });
+    const p = { id, name, pc, polite: myId > id, initiator: !!initiator, makingOffer: false, ignoreOffer: false, stream: new MediaStream(), screenStream: new MediaStream(), cameraTransceiver: null, state: { mic: true, cam: true, screen: false, hand: false }, vsender: null, asender: null, screenSender: null, screenTransceiver: null, tile: null, connState: 'connecting', queue: Promise.resolve(), pendingCandidates: [], attached: false, watchdog: null, bitrateScale: 1, lossHighCount: 0, lossGoodCount: 0 };
     peers.set(id, p);
 
     if (initiator) {
@@ -609,12 +622,15 @@
       const ta = at ? pc.addTransceiver(at, { direction: 'sendrecv', streams: [localStream] }) : pc.addTransceiver('audio', { direction: 'sendrecv' });
       const tv = vt ? pc.addTransceiver(vt, { direction: 'sendrecv', streams: [localStream] }) : pc.addTransceiver('video', { direction: 'sendrecv' });
       const ts = st ? pc.addTransceiver(st, { direction: 'sendrecv' }) : pc.addTransceiver('video', { direction: 'sendrecv' });
-      p.asender = ta.sender; p.vsender = tv.sender; p.screenSender = ts.sender; p.screenTransceiver = ts; p.attached = true;
+      p.asender = ta.sender; p.vsender = tv.sender; p.cameraTransceiver = tv; p.screenSender = ts.sender; p.screenTransceiver = ts; p.attached = true;
     }
 
     pc.ontrack = ({ track, transceiver }) => {
       const videoTransceivers = pc.getTransceivers().filter((t) => t.receiver && t.receiver.track && t.receiver.track.kind === 'video' && !t.stopped);
-      const isPresentationTrack = track.kind === 'video' && (transceiver === p.screenTransceiver || videoTransceivers.indexOf(transceiver) > 0);
+      const isPresentationTrack = track.kind === 'video' && (
+        transceiver === p.screenTransceiver ||
+        (!p.cameraTransceiver && videoTransceivers.indexOf(transceiver) > 0)
+      );
       const receivingStream = isPresentationTrack ? p.screenStream : p.stream;
       if (!receivingStream.getTracks().some((existing) => existing.id === track.id)) receivingStream.addTrack(track);
       // The presentation stream also carries the peer's mixed microphone/media audio
@@ -660,6 +676,7 @@
       p.connState = pc.connectionState;
       renderPeerTile(p);
       if (pc.connectionState === 'connected') {
+        syncPeerSenders(p);
         if (p.vsender) tuneVideoSender(p.vsender, p);
         if (p.screenSender) tuneVideoSender(p.screenSender, p, true);
         if (p.asender) tuneAudioSender(p.asender);
@@ -682,6 +699,19 @@
     syncTheaterStage();
     watchPeer(p, 0);
     return p;
+  }
+
+  async function syncPeerSenders(p) {
+    if (!p || !p.pc || p.pc.connectionState === 'closed') return;
+    const jobs = [];
+    const audio = outgoingAudioTrack();
+    const video = cameraTrack();
+    const presentation = screenStream && screenStream.getVideoTracks()[0] || null;
+    if (p.asender && p.asender.track !== (audio || null)) jobs.push(p.asender.replaceTrack(audio || null));
+    if (p.vsender && p.vsender.track !== (video || null)) jobs.push(p.vsender.replaceTrack(video || null));
+    if (p.screenSender && p.screenSender.track !== presentation) jobs.push(p.screenSender.replaceTrack(presentation));
+    const results = await Promise.allSettled(jobs);
+    results.forEach((result) => { if (result.status === 'rejected') console.warn('Peer track recovery failed:', result.reason); });
   }
 
   function tuneVideoSender(sender, peer, presentation) {
@@ -812,7 +842,7 @@
         break;
       }
       case 'chat': appendChat(m.name, m.text); notifyChat(); blip('ping'); break;
-      case 'reaction': floatReaction(m.emoji, m.name); break;
+      case 'reaction': activateReaction(m.emoji, m.name); break;
       default: break;
     }
   }
@@ -1035,6 +1065,7 @@
   }
 
   async function enterRoom(code, roomMode) {
+    unlockRoomAudio();
     if (entering || inRoom) return;
     setError('');
     const name = cleanName($('display-name').value);
@@ -1130,6 +1161,7 @@
     releaseRoomTab();
     clearTimeout(partyTimer);
     clearTimeout(aartiTimer); aartiTimer = null;
+    if (callScreen) callScreen.querySelectorAll('.aarti-orbit').forEach((node) => node.remove());
     roomMusicOn = false; clearInterval(roomMusicTimer); roomMusicTimer = null;
     partyTimer = null;
     callScreen.classList.remove('party');
@@ -1289,8 +1321,8 @@
         theaterStageVideo.srcObject = screenStream;
         theaterStageVideo.controls = false;
       }
-      const play = theaterStageVideo.play(); if (play && play.catch) play.catch(() => {});
       theaterStageVideo.muted = true;
+      const play = theaterStageVideo.play(); if (play && play.catch) play.catch(() => {});
       theaterStage.classList.add('has-media');
       if (theaterEmpty) theaterEmpty.classList.add('hidden');
       return;
@@ -1345,6 +1377,9 @@
     theaterStageVideo.src = theaterMediaUrl;
     theaterStageVideo.controls = true;
     theaterStageVideo.playsInline = true;
+    // Muted startup is allowed by browser autoplay policies; captured audio is
+    // mixed and shared separately after the element has begun playing.
+    theaterStageVideo.muted = true;
     try {
       await theaterStageVideo.play();
       await new Promise((resolve, reject) => {
@@ -1369,7 +1404,9 @@
     } catch (error) {
       console.warn('Theater media could not start:', error);
       await stopTheaterMedia();
-      toast(error.message || 'Could not play that video in Theater mode.');
+      toast(error && error.name === 'NotAllowedError'
+        ? 'The browser blocked automatic playback. Choose the clip again after tapping the player once.'
+        : (error.message || 'Could not play that video in Theater mode.'));
     }
   }
   if (mediaPicker) mediaPicker.addEventListener('change', (event) => startTheaterMedia(event.target.files && event.target.files[0]));
@@ -1379,20 +1416,25 @@
   function screenShareUnavailableMessage() {
     if (!window.isSecureContext) return 'Screen sharing requires this room to be opened over HTTPS.';
     if (/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)) {
-      return 'Screen sharing is not available in mobile browser websites on this device. Join from a supported desktop browser to share your screen.';
+      return 'This mobile browser does not expose app/screen capture to websites. Use a browser/device that offers its native screen picker, or join from desktop.';
     }
-    return 'This browser does not provide screen capture. Try an up-to-date desktop version of Chrome, Edge, Firefox, or Safari.';
+    return 'This browser does not provide screen capture. Try an up-to-date browser that supports the native screen picker.';
   }
 
-  $('toggle-screen').addEventListener('click', async () => {
-    if (state.screen) { if (theaterMediaActive) await stopTheaterMedia(); else await stopScreenShare(); toast('Sharing stopped.'); return; }
+  async function beginScreenShare() {
+    if (state.screen) {
+      if (theaterMediaActive) await stopTheaterMedia();
+      else await stopScreenShare();
+      toast('Sharing stopped.');
+      return;
+    }
     if (!window.isSecureContext || !navigator.mediaDevices || typeof navigator.mediaDevices.getDisplayMedia !== 'function') {
       toast(screenShareUnavailableMessage());
       return;
     }
     let captured = null;
     try {
-      // getDisplayMedia must be called directly from this button gesture.
+      // Must run directly from the user's click; the browser owns the source picker.
       try {
         captured = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: { ideal: 20 } }, audio: true });
       } catch (captureError) {
@@ -1410,194 +1452,24 @@
       await setPresentationVideo(track);
       await setPresentationAudio(captured.getAudioTracks()[0] || null);
       syncTheaterStage(); renderLocalTile(); broadcastState();
-      toast('Screen sharing started.');
+      toast('Screen/app sharing started.');
     } catch (e) {
       if (captured) captured.getTracks().forEach((t) => { try { t.stop(); } catch (_) {} });
       if (screenStream === captured) screenStream = null;
       state.screen = false;
       await setPresentationVideo(null); await setPresentationAudio(null);
       syncTheaterStage(); syncButtons(); renderLocalTile();
-      if (e && e.name === 'NotAllowedError') {
-        toast('Screen sharing is unavailable here or browser permission was denied. Try a supported desktop browser and check permissions.');
-      } else if (e && e.name === 'AbortError') {
-        toast('Screen sharing was cancelled or is not supported by this browser.');
-      } else {
-        toast('Screen sharing is not available here. Check browser support and permissions.');
-      }
+      if (e && e.name === 'NotAllowedError') toast('Screen sharing was cancelled or permission was denied.');
+      else if (e && e.name === 'NotReadableError') toast('The screen source is busy. Close another capture and try again.');
+      else if (e && e.name === 'AbortError') toast('The screen picker was closed.');
+      else toast(e && e.message ? e.message : 'Could not start screen sharing.');
     }
-  });
-
-  $('leave-room').addEventListener('click', leaveRoom);
-
-  function openPanel(type) {
-    $('side-panel').classList.remove('hidden');
-    const people = type === 'people';
-    $('people-view').classList.toggle('hidden', !people);
-    $('chat-view').classList.toggle('hidden', people);
-    $('panel-kicker').textContent = people ? 'THE ROOM' : 'LIVE CONVERSATION';
-    $('panel-title').childNodes[0].textContent = people ? 'People ' : 'Chat ';
-    if (!people) $('chat-input').focus();
-  }
-  $('open-people').addEventListener('click', () => openPanel('people'));
-  $('open-chat').addEventListener('click', () => openPanel('chat'));
-  $('close-panel').addEventListener('click', () => $('side-panel').classList.add('hidden'));
-
-  // ---------- chat & reactions ----------
-  function appendChat(name, message) {
-    const list = $('chat-messages');
-    const empty = $('chat-empty'); if (empty) empty.remove();
-    const item = document.createElement('div');
-    item.className = 'chat-message';
-    const a = document.createElement('strong'); a.textContent = name;
-    const b = document.createElement('p'); b.textContent = message;
-    item.append(a, b); list.appendChild(item);
-    list.scrollTop = list.scrollHeight;
-  }
-  function notifyChat() { if ($('side-panel').classList.contains('hidden') || $('chat-view').classList.contains('hidden')) toast('New chat message'); }
-
-  $('chat-form').addEventListener('submit', (e) => {
-    e.preventDefault();
-    const input = $('chat-input');
-    const text = input.value.trim();
-    if (!text || !ws || ws.readyState !== 1) return;
-    ws.send(JSON.stringify({ type: 'chat', text }));
-    appendChat(localName + ' (YOU)', text);
-    input.value = '';
-  });
-
-  function floatReaction(emoji, name) {
-    const box = reactionFloats;
-    if (!box || !emoji || !callScreen || callScreen.classList.contains('hidden')) return;
-
-    // Keep the floating reaction independent of the old stage-level styling.
-    // A randomized horizontal position prevents several reactions from covering
-    // one another, while the call-screen overlay remains visible in fullscreen.
-    const el = document.createElement('div');
-    el.className = 'room05-reaction-pop';
-    el.style.setProperty('--room05-reaction-x', `${18 + Math.random() * 64}%`);
-
-    const glyph = document.createElement('span');
-    glyph.className = 'room05-reaction-glyph';
-    glyph.textContent = emoji;
-    const label = document.createElement('small');
-    label.className = 'room05-reaction-label';
-    label.textContent = name || '';
-    el.append(glyph, label);
-    box.appendChild(el);
-
-    while (box.children.length > 14) box.firstElementChild.remove();
-    setTimeout(() => el.remove(), 3100);
-
-    if (emoji === '🎉') confetti();
-    else if (emoji === '🪩') party();
-    else if (emoji === '📢') airhorn();
-    else if (emoji === '🪔') aartiMode();
-    else if (emoji === '🎵') toggleRoomMusic();
   }
 
-  function aartiMode() {
-    if (!videoGrid || !videoGrid.isConnected) return;
-    videoGrid.querySelectorAll('.aarti-orbit').forEach((node) => node.remove());
-    videoGrid.classList.remove('aarti-active');
-    void videoGrid.offsetWidth;
-    videoGrid.classList.add('aarti-active');
-    const overlay = document.createElement('div');
-    overlay.className = 'aarti-orbit';
-    overlay.setAttribute('aria-hidden', 'true');
-    ['🪔','✨','🪔','✨','🪔','✨','🪔','✨'].forEach((glyph, index) => {
-      const item = document.createElement('span');
-      item.textContent = glyph;
-      item.style.setProperty('--orbit-index', String(index));
-      overlay.appendChild(item);
-    });
-    videoGrid.appendChild(overlay);
-    clearTimeout(aartiTimer);
-    aartiTimer = setTimeout(() => { videoGrid.classList.remove('aarti-active'); overlay.remove(); }, 7200);
-    if (!prefs.sound) return;
-    try {
-      audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
-      if (audioCtx.state === 'suspended') audioCtx.resume();
-      [1046.5, 1318.5, 1568, 1318.5, 1760].forEach((frequency, i) => {
-        const start = audioCtx.currentTime + i * 0.22;
-        const osc = audioCtx.createOscillator();
-        const gain = audioCtx.createGain();
-        const overtone = audioCtx.createOscillator();
-        const overtoneGain = audioCtx.createGain();
-        osc.type = 'sine'; osc.frequency.setValueAtTime(frequency, start);
-        overtone.type = 'sine'; overtone.frequency.setValueAtTime(frequency * 2.01, start);
-        gain.gain.setValueAtTime(0.0001, start); gain.gain.exponentialRampToValueAtTime(0.13, start + 0.012); gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.55);
-        overtoneGain.gain.setValueAtTime(0.0001, start); overtoneGain.gain.exponentialRampToValueAtTime(0.045, start + 0.01); overtoneGain.gain.exponentialRampToValueAtTime(0.0001, start + 0.3);
-        osc.connect(gain); gain.connect(audioCtx.destination); overtone.connect(overtoneGain); overtoneGain.connect(audioCtx.destination);
-        osc.start(start); osc.stop(start + 0.58); overtone.start(start); overtone.stop(start + 0.32);
-      });
-    } catch (_) {}
-  }
+  $('toggle-screen').addEventListener('click', beginScreenShare);
+  const appShareButton = $('share-app-screen');
+  if (appShareButton) appShareButton.addEventListener('click', beginScreenShare);
 
-  function musicBar() {
-    if (!audioCtx || audioCtx.state !== 'running') return;
-    const base = audioCtx.currentTime + 0.025;
-    const bass = [110, 130.81, 98, 146.83];
-    const melody = [440, 392, 329.63, 392, 523.25, 440, 392, 329.63];
-    bass.forEach((frequency, index) => {
-      const start = base + index * 0.52;
-      const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain();
-      osc.type = 'triangle'; osc.frequency.setValueAtTime(frequency, start);
-      gain.gain.setValueAtTime(0.0001, start); gain.gain.exponentialRampToValueAtTime(0.055, start + 0.035); gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.43);
-      osc.connect(gain); gain.connect(audioCtx.destination); osc.start(start); osc.stop(start + 0.45);
-    });
-    melody.forEach((frequency, index) => {
-      const start = base + index * 0.26 + 0.04;
-      const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain();
-      osc.type = 'sine'; osc.frequency.setValueAtTime(frequency, start);
-      gain.gain.setValueAtTime(0.0001, start); gain.gain.exponentialRampToValueAtTime(0.024, start + 0.02); gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.2);
-      osc.connect(gain); gain.connect(audioCtx.destination); osc.start(start); osc.stop(start + 0.22);
-    });
-  }
-  function toggleRoomMusic() {
-    if (!prefs.sound) { toast('Turn on SOUNDS & HAPTICS in Setup to hear the room beat.'); return; }
-    roomMusicOn = !roomMusicOn;
-    clearInterval(roomMusicTimer); roomMusicTimer = null;
-    if (!roomMusicOn) { toast('Room beat paused.'); return; }
-    try {
-      audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
-      if (audioCtx.state === 'suspended') audioCtx.resume();
-      musicBar();
-      roomMusicTimer = setInterval(musicBar, 2080);
-      toast('ROOM/05 original lo-fi loop: on.');
-    } catch (_) { roomMusicOn = false; toast('Audio is unavailable in this browser.'); }
-  }
-
-  function confetti() {
-    try {
-      const c = document.createElement('canvas'); c.className = 'confetti';
-      c.width = innerWidth; c.height = innerHeight;
-      (callScreen && !callScreen.classList.contains('hidden') ? callScreen : document.body).appendChild(c);
-      const ctx = c.getContext('2d');
-      const css = getComputedStyle(document.documentElement);
-      const colors = [css.getPropertyValue('--acid').trim(), css.getPropertyValue('--red').trim(), css.getPropertyValue('--blue').trim(), '#ffffff', '#ffd23f'];
-      const bits = Array.from({ length: 140 }, () => ({ x: innerWidth / 2, y: innerHeight * 0.75, vx: (Math.random() - 0.5) * 16, vy: -Math.random() * 18 - 6, s: Math.random() * 7 + 4, r: Math.random() * 6.3, vr: (Math.random() - 0.5) * 0.4, c: colors[(Math.random() * colors.length) | 0] }));
-      const t0 = performance.now();
-      (function frame(now) {
-        const age = now - t0; ctx.clearRect(0, 0, c.width, c.height);
-        bits.forEach((b) => { b.vy += 0.5; b.x += b.vx; b.y += b.vy; b.r += b.vr; ctx.save(); ctx.translate(b.x, b.y); ctx.rotate(b.r); ctx.fillStyle = b.c; ctx.globalAlpha = Math.max(0, 1 - age / 2600); ctx.fillRect(-b.s / 2, -b.s / 2, b.s, b.s * 0.6); ctx.restore(); });
-        if (age < 2600) requestAnimationFrame(frame); else c.remove();
-      })(t0);
-    } catch (_) {}
-  }
-
-  document.querySelectorAll('[data-reaction]').forEach((b) => b.addEventListener('click', () => {
-    const emoji = b.dataset.reaction;
-    // Always show the local effect immediately, even while the room socket is
-    // reconnecting. Broadcast it when a live connection is available.
-    floatReaction(emoji, 'You');
-    if (ws && ws.readyState === 1) {
-      try {
-        ws.send(JSON.stringify({ type: 'reaction', emoji }));
-      } catch (error) {
-        console.warn('Could not send room reaction:', error);
-      }
-    }
-  }));
 
   // ---------- invite / copy ----------
   $('copy-code').addEventListener('click', async () => {
@@ -1671,6 +1543,7 @@
   $('opt-sound').checked = prefs.sound;
   $('opt-sound').addEventListener('change', (e) => {
     prefs.sound = e.target.checked; store.set('sound', prefs.sound ? '1' : '0');
+    if (prefs.sound) unlockRoomAudio();
     if (!prefs.sound) { roomMusicOn = false; clearInterval(roomMusicTimer); roomMusicTimer = null; }
   });
 
@@ -1783,13 +1656,27 @@
       partyTimer = null;
     }, 9000);
   }
+  const chineseHornAudio = new Audio('/chinese-meme-horn.wav');
+  chineseHornAudio.preload = 'auto';
+  chineseHornAudio.volume = 0.78;
   function airhorn() {
+    if (!prefs.sound) return;
+    unlockRoomAudio();
+    try {
+      chineseHornAudio.pause();
+      chineseHornAudio.currentTime = 0;
+      const playback = chineseHornAudio.play();
+      if (playback && playback.catch) playback.catch(() => playFallbackHorn());
+      buzz([55, 35, 55]);
+    } catch (_) { playFallbackHorn(); }
+  }
+  function playFallbackHorn() {
     // Original synthesized classic meme airhorn: bright, brassy, layered blast.
     if (!prefs.sound) return;
     try {
       audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
       const ctx = audioCtx;
-      if (ctx.state === 'suspended') ctx.resume();
+      if (ctx.state === 'suspended') ctx.resume().catch(() => {});
       const t0 = ctx.currentTime + 0.015;
       const master = ctx.createGain();
       const limiter = ctx.createDynamicsCompressor();
@@ -1837,6 +1724,133 @@
     } catch (_) {}
   }
 
+  function floatReaction(emoji, name) {
+    if (!reactionFloats || !emoji) return;
+    const pop = document.createElement('div');
+    pop.className = 'room05-reaction-pop';
+    pop.style.setProperty('--room05-reaction-x', (16 + Math.random() * 68).toFixed(1) + '%');
+    const glyph = document.createElement('span');
+    glyph.className = 'room05-reaction-glyph';
+    glyph.textContent = emoji;
+    const label = document.createElement('span');
+    label.className = 'room05-reaction-label';
+    label.textContent = name || 'ROOM';
+    pop.append(glyph, label);
+    reactionFloats.appendChild(pop);
+    window.setTimeout(() => pop.remove(), 3100);
+  }
+
+  function playAartiBgm() {
+    if (!prefs.sound) return;
+    try {
+      audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+      const ctx = audioCtx;
+      if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+      const start = ctx.currentTime + 0.04;
+      const master = ctx.createGain();
+      master.gain.setValueAtTime(0.0001, start);
+      master.gain.exponentialRampToValueAtTime(0.035, start + 0.65);
+      master.gain.setValueAtTime(0.035, start + 5.8);
+      master.gain.exponentialRampToValueAtTime(0.0001, start + 7.4);
+      master.connect(ctx.destination);
+
+      // A soft original drone with spaced bell notes; no external audio dependency.
+      [110, 164.81, 220].forEach((frequency, index) => {
+        const oscillator = ctx.createOscillator();
+        const voice = ctx.createGain();
+        oscillator.type = index === 0 ? 'sine' : 'triangle';
+        oscillator.frequency.setValueAtTime(frequency, start);
+        voice.gain.setValueAtTime(index === 0 ? 0.38 : 0.16, start);
+        oscillator.connect(voice); voice.connect(master);
+        oscillator.start(start); oscillator.stop(start + 7.5);
+      });
+      [0, 1.75, 3.5, 5.25].forEach((offset, index) => {
+        const bell = ctx.createOscillator();
+        const envelope = ctx.createGain();
+        bell.type = 'sine';
+        bell.frequency.setValueAtTime([659.25, 783.99, 987.77, 783.99][index], start + offset);
+        envelope.gain.setValueAtTime(0.0001, start + offset);
+        envelope.gain.exponentialRampToValueAtTime(0.22, start + offset + 0.018);
+        envelope.gain.exponentialRampToValueAtTime(0.0001, start + offset + 1.25);
+        bell.connect(envelope); envelope.connect(master);
+        bell.start(start + offset); bell.stop(start + offset + 1.3);
+      });
+    } catch (_) { /* sound is decorative; keep the visual effect working */ }
+  }
+
+  function aartiMode() {
+    if (!callScreen || callScreen.classList.contains('hidden')) return;
+    callScreen.querySelectorAll('.aarti-orbit').forEach((node) => node.remove());
+    const orbit = document.createElement('div');
+    orbit.className = 'aarti-orbit';
+    orbit.setAttribute('aria-hidden', 'true');
+    const diya = document.createElement('span');
+    diya.className = 'aarti-diya';
+    diya.textContent = '🪔';
+    orbit.appendChild(diya);
+    callScreen.appendChild(orbit);
+    videoGrid.classList.add('aarti-active');
+    playAartiBgm();
+    clearTimeout(aartiTimer);
+    aartiTimer = window.setTimeout(() => {
+      orbit.remove();
+      videoGrid.classList.remove('aarti-active');
+      aartiTimer = null;
+    }, 15000);
+  }
+
+  function toggleRoomMusic() {
+    if (roomMusicOn) {
+      roomMusicOn = false;
+      clearInterval(roomMusicTimer);
+      roomMusicTimer = null;
+      return;
+    }
+    if (!prefs.sound) return;
+    unlockRoomAudio();
+    roomMusicOn = true;
+    const playBar = () => {
+      if (!roomMusicOn || !prefs.sound) return;
+      try {
+        audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+        const ctx = audioCtx;
+        if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+        const start = ctx.currentTime + 0.035;
+        [220, 261.63, 329.63, 261.63].forEach((frequency, index) => {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          const at = start + index * 0.82;
+          osc.type = 'sine'; osc.frequency.setValueAtTime(frequency, at);
+          gain.gain.setValueAtTime(0.0001, at);
+          gain.gain.exponentialRampToValueAtTime(0.026, at + 0.035);
+          gain.gain.exponentialRampToValueAtTime(0.0001, at + 0.72);
+          osc.connect(gain); gain.connect(ctx.destination);
+          osc.start(at); osc.stop(at + 0.74);
+        });
+      } catch (_) { /* optional room ambience */ }
+    };
+    playBar();
+    roomMusicTimer = window.setInterval(playBar, 3400);
+  }
+
+  function activateReaction(emoji, name) {
+    if (!emoji) return;
+    if (emoji === '🪔') { aartiMode(); return; }
+    floatReaction(emoji, name);
+    if (emoji === '🪩') party();
+    else if (emoji === '📢') airhorn();
+    else if (emoji === '🎵') toggleRoomMusic();
+  }
+
+  document.querySelectorAll('[data-reaction]').forEach((button) => {
+    button.addEventListener('click', () => {
+      if (!ws || ws.readyState !== 1) { toast('Join a room before reacting.'); return; }
+      const emoji = button.dataset.reaction;
+      activateReaction(emoji, localName + ' (YOU)');
+      try { ws.send(JSON.stringify({ type: 'reaction', emoji })); } catch (_) {}
+    });
+  });
+
   const ICEBREAKERS = ['Hot take: pineapple on pizza — yes or no?', 'What song is stuck in your head right now?', 'Worst haircut you ever had. Go.', 'Which app do you open first every morning?', 'What is the most useless skill you have?', 'Superpower you would pick but only for 5 minutes?', 'Last thing you watched that you could not stop talking about?', 'Describe your week as a movie title.', 'Cereal: milk first or cereal first?', 'What would your walk-up song be?', 'Unpopular opinion you will defend forever?', 'What emoji is your whole personality?', 'Dream trip if money did not matter?', 'Most random thing in your camera roll right now?', 'If we all started a band, what instrument are you?', 'What is your comfort show?', 'Rate your Wi-Fi from 1 to 10. Be honest.', 'What is a tiny thing that made you happy today?', 'Pick one: only text or only calls forever?', 'What is the weirdest food combo you secretly love?'];
   const icebreakerBtn = $('icebreaker');
   if (icebreakerBtn) icebreakerBtn.addEventListener('click', () => {
@@ -1866,9 +1880,10 @@
     });
   }));
   createButton.addEventListener('click', () => {
+    unlockRoomAudio();
     try { enterRoom(makeCode(), selectedRoomMode); } catch (e) { setError(e.message || 'Could not create a room code.'); }
   });
-  joinButton.addEventListener('click', () => enterRoom($('room-code').value.toUpperCase().replace(/[^A-Z0-9]/g, '')));
+  joinButton.addEventListener('click', () => { unlockRoomAudio(); enterRoom($('room-code').value.toUpperCase().replace(/[^A-Z0-9]/g, '')); });
   $('room-code').addEventListener('input', (e) => { e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8); });
   $('room-code').addEventListener('keydown', (e) => { if (e.key === 'Enter') joinButton.click(); });
   $('display-name').addEventListener('keydown', (e) => { if (e.key === 'Enter') ($('room-code').value ? joinButton : createButton).click(); });

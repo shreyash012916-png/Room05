@@ -1,4 +1,4 @@
-# ROOM/05 — Peer-to-peer video rooms (v6.7 Free deployment)
+# ROOM/05 — Peer-to-peer video rooms (v6.8 Free deployment)
 
 ROOM/05 is a browser-based room for video, voice, chat, reactions and screen sharing. Calls use browser WebRTC connections between participants. The Node server serves the website and relays the small signaling messages needed to connect peers.
 
@@ -15,7 +15,7 @@ ROOM/05 is a browser-based room for video, voice, chat, reactions and screen sha
 - User accounts are stored in a separate PostgreSQL database (Neon), not in Render's local filesystem. This is required because a Render Free service has an ephemeral filesystem.
 - The session-signing secret is also stored in PostgreSQL so a service restart does not invalidate every session.
 - Username/password login remains part of ROOM/05 itself. Neon is only the database; it is not an external login or identity provider.
-- Existing account, legal and room functionality is retained. This version adds room-wide Normal / Theater layouts, shared local-video playback in Theater mode (where the browser supports media capture), separate camera and presentation video tracks, one-presenter-at-a-time coordination, additional camera filters, Aarti effects, and an original synthesized room beat.
+- Existing account, legal and room functionality is retained. This version adds room-wide Normal / Theater layouts, shared local-video playback in Theater mode (where the browser supports media capture), separate camera and presentation video tracks, one-presenter-at-a-time coordination, additional camera filters, a single full-room Aarti orbit with soft original chime BGM, an included local suona-style meme horn, and refreshed brutalist Theater styling.
 - Automatic video quality now reduces resolution, frame rate and per-peer bitrate as rooms grow; high manual presets are automatically capped in larger groups, and individual peer video bitrate adapts when packet loss is reported.
 
 ## Accounts and first-visit agreement
@@ -125,3 +125,20 @@ Open `http://localhost:3000`. Keep `.env` private; `.gitignore` excludes it.
 - Anyone with a valid room code can attempt to join while a seat is available.
 - This ZIP does not contain your Neon database connection string or any other secret. Add secrets in Render's Environment settings.
 - This version creates a fresh PostgreSQL account store; it does not automatically import accounts from an older v6.2 JSON-file deployment. If that older version already contains registered users, keep its old storage intact until those records are safely migrated.
+
+
+## Creator credit
+ROOM/05 is created by **Shreyash**. The site includes author metadata and structured website creator metadata for crawlers; search engines decide independently when and whether to display that information.
+
+## Screen sharing and connection notes
+Screen/app sharing uses the browser's native `getDisplayMedia()` picker over HTTPS. The browser and operating system decide which sources (tab, window, full display, or app) can be selected; many mobile browsers do not expose app capture to websites. A webpage cannot force those options to appear.
+
+The signaling server advertises multiple public STUN servers. For connectivity through restrictive NATs, mobile carriers, VPNs, and corporate firewalls, configure a TURN relay using `TURN_URL`, `TURN_USER`, and `TURN_PASS` in the Render environment. STUN alone cannot guarantee every peer-to-peer path.
+
+
+### v6.8 updates
+- Camera and presentation transceivers are explicitly tracked and senders are reconciled when a peer connects, reducing the chance of a new participant appearing without camera media.
+- ICE candidate pool is expanded and multiple public STUN endpoints are advertised. Configure TURN for stricter NAT/carrier/corporate networks.
+- Theater has a dedicated browser-native app/screen picker action where `getDisplayMedia()` is supported. Mobile browser support remains device/browser-dependent.
+- Sound is warmed on the first genuine user interaction; rejected media playback promises are handled without a user-gesture alert inside the site. Browser autoplay restrictions remain in force.
+- Creator credit and structured metadata identify Shreyash.

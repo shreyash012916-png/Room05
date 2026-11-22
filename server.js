@@ -21,12 +21,13 @@ const ROOT = __dirname;
 const TERMS_VERSION = '1.0';
 const PRIVACY_VERSION = '1.1';
 const SESSION_MAX_AGE = 30 * 24 * 60 * 60;
-const PUBLIC_FILES = ['index.html', 'style.css', 'auth.css', 'auth.js', 'main.js', 'polish.css', 'legal.css', 'terms.html', 'privacy.html', 'favicon.svg'];
+const PUBLIC_FILES = ['index.html', 'style.css', 'auth.css', 'auth.js', 'main.js', 'polish.css', 'legal.css', 'terms.html', 'privacy.html', 'favicon.svg', 'chinese-meme-horn.wav'];
 const MIME = {
   '.html': 'text/html; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
-  '.svg': 'image/svg+xml'
+  '.svg': 'image/svg+xml',
+  '.wav': 'audio/wav'
 };
 
 if (!process.env.DATABASE_URL) {
@@ -374,7 +375,7 @@ const server = http.createServer((req, res) => {
 
 // Free public STUN servers. Optional TURN relay (only needed for strict networks).
 function iceServers() {
-  const list = [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302', 'stun:stun.cloudflare.com:3478'] }];
+  const list = [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302', 'stun:stun.cloudflare.com:3478', 'stun:global.stun.twilio.com:3478'] }];
   if (process.env.TURN_URL) {
     list.push({ urls: process.env.TURN_URL.split(',').map((value) => value.trim()), username: process.env.TURN_USER || '', credential: process.env.TURN_PASS || '' });
   }

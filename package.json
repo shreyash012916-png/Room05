@@ -1,6 +1,6 @@
 {
   "name": "room05-p2p-video-rooms",
-  "version": "6.7.0",
+  "version": "6.8.0",
   "private": true,
   "description": "ROOM/05 peer-to-peer rooms with adaptive mesh media, shared theater playback and PostgreSQL accounts",
   "main": "server.js",

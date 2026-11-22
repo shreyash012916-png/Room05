@@ -3,6 +3,7 @@
   const TERMS_VERSION = '1.0';
   const PRIVACY_VERSION = '1.1';
   const CONSENT_KEY = 'room05-legal-consent';
+  const SESSION_CACHE_KEY = 'room05-auth-user-v1';
   const $ = (id) => document.getElementById(id);
 
   const legalOverlay = $('legal-gate');
@@ -23,6 +24,29 @@
   let currentUser = null;
   let busy = false;
   const profileControls = [];
+
+  function readCachedUser() {
+    try {
+      const user = JSON.parse(sessionStorage.getItem(SESSION_CACHE_KEY) || 'null');
+      if (!user || typeof user.username !== 'string' || typeof user.userId !== 'string') return null;
+      if (!user.username.trim() || !user.userId.trim()) return null;
+      return { username: user.username.slice(0, 24), userId: user.userId.slice(0, 80) };
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function cacheUser(user) {
+    try {
+      if (user && user.username && user.userId) {
+        sessionStorage.setItem(SESSION_CACHE_KEY, JSON.stringify({ username: user.username, userId: user.userId }));
+      }
+    } catch (_) {}
+  }
+
+  function clearCachedUser() {
+    try { sessionStorage.removeItem(SESSION_CACHE_KEY); } catch (_) {}
+  }
 
   function consentIsCurrent() {
     try {
@@ -186,6 +210,8 @@
 
   function showAccount(user) {
     currentUser = user;
+    cacheUser(user);
+    document.body.classList.remove('auth-pending');
     authOverlay.classList.add('hidden');
     legalOverlay.classList.add('hidden');
     if (accountChip) accountChip.classList.remove('visible');
@@ -199,6 +225,7 @@
   }
 
   function showAuth(message) {
+    document.body.classList.remove('auth-pending');
     authOverlay.classList.remove('hidden');
     legalOverlay.classList.add('hidden');
     if (accountChip) accountChip.classList.remove('visible');
@@ -246,6 +273,7 @@
     profileControls.forEach((control) => { control.logout.disabled = true; });
     try { await api('/api/logout', {}); } catch (_) { /* Continue clearing the local account UI. */ }
     try { localStorage.removeItem(CONSENT_KEY); } catch (_) {}
+    clearCachedUser();
     currentUser = null;
     window.location.href = '/';
   }
@@ -313,33 +341,49 @@
   async function bootstrap() {
     createProfileControls();
     setMode('login');
-    if (!consentIsCurrent()) {
-      legalOverlay.classList.remove('hidden');
-      authOverlay.classList.add('hidden');
-      hideProfileControls();
-      return;
-    }
 
-    // A stored consent marker only belongs to the currently signed-in browser user.
-    // If there is no valid account session, ask for consent before the next sign-in.
+    // Restore the last verified account for this tab immediately. The server
+    // check below remains authoritative, but this prevents a returning member
+    // from briefly seeing the first-visit legal gate while the check is in flight.
+    const cachedUser = readCachedUser();
+    if (cachedUser) showAccount(cachedUser);
+
     try {
       const result = await api('/api/me');
       if (result.user) {
-        try {
-          await api('/api/legal/accept', { termsVersion: TERMS_VERSION, privacyVersion: PRIVACY_VERSION });
-        } catch (error) {
-          console.warn('Could not refresh legal acceptance:', error.message);
-        }
+        // Login/register already records the current legal versions server-side.
+        // Avoid a redundant write on every page load; it only delayed the UI.
+        setConsent();
         showAccount(result.user);
         return;
       }
-    } catch (_) {
-      // Fail closed and show the agreement before login.
+    } catch (error) {
+      // A temporary network/server failure is not proof that the person is
+      // signed out. Keep a cached account visible, or avoid showing the legal
+      // first-visit gate when a current consent record already exists.
+      if (cachedUser) {
+        console.warn('Could not refresh the ROOM/05 session:', error.message);
+        return;
+      }
+      if (consentIsCurrent()) {
+        authOverlay.classList.add('hidden');
+        legalOverlay.classList.add('hidden');
+        hideProfileControls();
+        document.body.classList.remove('auth-pending');
+        console.warn('ROOM/05 could not verify the session. The legal gate was suppressed because consent is already current.');
+        return;
+      }
+      // With no cached account or prior consent, continue to first-visit flow.
     }
+
+    // The server has confirmed there is no active login. A signed-out visitor
+    // must see the current terms before the login/register form.
+    clearCachedUser();
     try { localStorage.removeItem(CONSENT_KEY); } catch (_) {}
-    legalOverlay.classList.remove('hidden');
     authOverlay.classList.add('hidden');
+    legalOverlay.classList.remove('hidden');
     hideProfileControls();
+    document.body.classList.remove('auth-pending');
   }
 
   window.ROOM05_AUTH = {

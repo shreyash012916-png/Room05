@@ -11,13 +11,13 @@
     <meta name="description" content="Private peer-to-peer video rooms for your circle. Sign in to join." />
     <title>ROOM/05 — Keep your circle close</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <link rel="stylesheet" href="/style.css?v=6.4.0" />
-    <link rel="stylesheet" href="/auth.css?v=1.1.0" />
+    <link rel="stylesheet" href="/style.css?v=6.4.2" />
+    <link rel="stylesheet" href="/auth.css?v=1.2.1" />
   </head>
-  <body>
+  <body class="auth-pending">
     <div class="grain" aria-hidden="true"></div>
 
-    <div class="auth-overlay" id="legal-gate" role="dialog" aria-modal="true" aria-labelledby="legal-gate-title">
+    <div class="auth-overlay hidden" id="legal-gate" role="dialog" aria-modal="true" aria-labelledby="legal-gate-title">
       <section class="auth-card auth-card-wide">
         <div class="auth-kicker"><i></i> BEFORE YOU ENTER / 00</div>
         <h1 class="auth-title" id="legal-gate-title">One quick read.</h1>
@@ -182,7 +182,7 @@
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
     <div class="reaction-floats" id="reaction-floats" aria-hidden="true"></div>
     <div id="audio-rack" aria-hidden="true"></div>
-    <script src="/auth.js?v=1.1.0" defer></script>
-    <script src="/main.js?v=6.4.0" defer></script>
+    <script src="/auth.js?v=1.2.1" defer></script>
+    <script src="/main.js?v=6.4.2" defer></script>
   </body>
 </html>

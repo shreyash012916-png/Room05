@@ -1,4 +1,21 @@
 /* ROOM/05 account and first-visit consent layers */
+/* Avoid a first-frame legal-gate flash while an existing session is restored. */
+body.auth-pending { overflow: hidden; }
+body.auth-pending > :not(.grain):not(.auth-overlay) { visibility: hidden !important; }
+body.auth-pending::after {
+  content: 'RESTORING SESSION…';
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: var(--auth-paper, #e9e6dc);
+  color: var(--auth-muted, #77796e);
+  font: 10px var(--mono, 'DM Mono', monospace);
+  letter-spacing: .14em;
+}
+
 :root { --auth-ink: var(--ink, #181914); --auth-paper: var(--paper, #e9e6dc); --auth-muted: var(--muted, #77796e); --auth-accent: var(--lime, #d9ff00); }
 .auth-overlay { position: fixed; inset: 0; z-index: 10000; display: grid; place-items: center; padding: 20px; background: rgba(9, 10, 8, .78); backdrop-filter: blur(12px); overflow-y: auto; }
 .auth-overlay.hidden { display: none !important; }

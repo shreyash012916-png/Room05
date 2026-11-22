@@ -115,7 +115,15 @@
   const landing = $('landing-screen');
   const callScreen = $('call-screen');
   const videoGrid = $('video-grid');
+  const reactionFloats = $('reaction-floats');
   const errorBox = $('landing-error');
+
+  // The call screen is also the fullscreen root. Effects placed elsewhere in
+  // <body> are excluded by the Fullscreen API, so keep every call effect inside
+  // this element in both normal and fullscreen layouts.
+  if (reactionFloats && callScreen && reactionFloats.parentElement !== callScreen) {
+    callScreen.appendChild(reactionFloats);
+  }
   const createButton = $('create-room');
   const joinButton = $('join-room');
 
@@ -134,6 +142,7 @@
   let retryCount = 0;
   let reconnectTask = null;
   let toastTimer = null;
+  let partyTimer = null;
   let audioCtx = null;
   let wakeLock = null;
   let pinnedId = null;
@@ -935,7 +944,11 @@
   function leaveRoom() {
     leaving = true; inRoom = false; retryCount = 0;
     releaseRoomTab();
-    document.body.classList.remove('party');
+    clearTimeout(partyTimer);
+    partyTimer = null;
+    callScreen.classList.remove('party');
+    document.querySelectorAll('#call-screen .party-banner, #call-screen .confetti').forEach((node) => node.remove());
+    if (reactionFloats) reactionFloats.replaceChildren();
     stopHeartbeat(); stopStats(); releaseWakeLock(); document.body.classList.remove('in-call'); pinnedId = null;
     if (document.fullscreenElement) { try { document.exitFullscreen(); } catch (_) {} }
     if (ws) { const s = ws; ws = null; try { s.close(); } catch (_) {} }
@@ -1084,22 +1097,37 @@
   });
 
   function floatReaction(emoji, name) {
-    const box = $('reaction-floats');
+    const box = reactionFloats;
+    if (!box || !emoji || !callScreen || callScreen.classList.contains('hidden')) return;
+
+    // Keep the floating reaction independent of the old stage-level styling.
+    // A randomized horizontal position prevents several reactions from covering
+    // one another, while the call-screen overlay remains visible in fullscreen.
     const el = document.createElement('div');
-    el.className = 'float-emoji';
-    el.textContent = emoji;
-    const sm = document.createElement('small'); sm.textContent = name || ''; el.appendChild(sm);
+    el.className = 'room05-reaction-pop';
+    el.style.setProperty('--room05-reaction-x', `${18 + Math.random() * 64}%`);
+
+    const glyph = document.createElement('span');
+    glyph.className = 'room05-reaction-glyph';
+    glyph.textContent = emoji;
+    const label = document.createElement('small');
+    label.className = 'room05-reaction-label';
+    label.textContent = name || '';
+    el.append(glyph, label);
     box.appendChild(el);
-    setTimeout(() => el.remove(), 2700);
+
+    while (box.children.length > 14) box.firstElementChild.remove();
+    setTimeout(() => el.remove(), 3100);
+
     if (emoji === '🎉') confetti();
     else if (emoji === '🪩') party();
     else if (emoji === '📢') airhorn();
-    else if (box.children.length > 12) box.firstChild.remove();
   }
   function confetti() {
     try {
       const c = document.createElement('canvas'); c.className = 'confetti';
-      c.width = innerWidth; c.height = innerHeight; document.body.appendChild(c);
+      c.width = innerWidth; c.height = innerHeight;
+      (callScreen && !callScreen.classList.contains('hidden') ? callScreen : document.body).appendChild(c);
       const ctx = c.getContext('2d');
       const css = getComputedStyle(document.documentElement);
       const colors = [css.getPropertyValue('--acid').trim(), css.getPropertyValue('--red').trim(), css.getPropertyValue('--blue').trim(), '#ffffff', '#ffd23f'];
@@ -1114,10 +1142,17 @@
   }
 
   document.querySelectorAll('[data-reaction]').forEach((b) => b.addEventListener('click', () => {
-    if (!ws || ws.readyState !== 1) return;
     const emoji = b.dataset.reaction;
-    ws.send(JSON.stringify({ type: 'reaction', emoji }));
+    // Always show the local effect immediately, even while the room socket is
+    // reconnecting. Broadcast it when a live connection is available.
     floatReaction(emoji, 'You');
+    if (ws && ws.readyState === 1) {
+      try {
+        ws.send(JSON.stringify({ type: 'reaction', emoji }));
+      } catch (error) {
+        console.warn('Could not send room reaction:', error);
+      }
+    }
   }));
 
   // ---------- invite / copy ----------
@@ -1278,15 +1313,25 @@
   }
 
   // ---------- party mode, airhorn, icebreakers, tile filters ----------
-  let partyTimer = null;
   function party() {
-    document.body.classList.add('party');
-    document.querySelectorAll('.party-banner').forEach((n) => n.remove());
-    const b = document.createElement('div'); b.className = 'party-banner'; b.textContent = '🪩 PARTY MODE'; document.body.appendChild(b);
-    confetti(); setTimeout(confetti, 700); setTimeout(confetti, 1500);
-    buzz([30, 40, 30, 40, 60]); blip('join');
+    if (!callScreen || callScreen.classList.contains('hidden')) return;
+    callScreen.classList.add('party');
+    callScreen.querySelectorAll('.party-banner').forEach((n) => n.remove());
+    const b = document.createElement('div');
+    b.className = 'party-banner';
+    b.textContent = '🪩 PARTY MODE';
+    callScreen.appendChild(b);
+    confetti();
+    setTimeout(() => { if (callScreen && !callScreen.classList.contains('hidden')) confetti(); }, 700);
+    setTimeout(() => { if (callScreen && !callScreen.classList.contains('hidden')) confetti(); }, 1500);
+    buzz([30, 40, 30, 40, 60]);
+    blip('join');
     clearTimeout(partyTimer);
-    partyTimer = setTimeout(() => { document.body.classList.remove('party'); b.remove(); }, 9000);
+    partyTimer = setTimeout(() => {
+      callScreen.classList.remove('party');
+      b.remove();
+      partyTimer = null;
+    }, 9000);
   }
   function airhorn() {
     if (!prefs.sound) return;

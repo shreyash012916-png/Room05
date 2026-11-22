@@ -20,6 +20,138 @@
   let mode = 'login';
   let currentUser = null;
   let busy = false;
+  let controls;
+  let profileButton;
+  let profileMenu;
+  let logoutButton;
+  let fullscreenButton;
+
+  /* These controls are created here so the existing page markup and backend stay untouched. */
+  function createTopControls() {
+    if (document.getElementById('room05-top-controls')) {
+      controls = $('room05-top-controls');
+      profileButton = $('room05-profile-button');
+      profileMenu = $('room05-profile-menu');
+      logoutButton = $('room05-profile-logout');
+      fullscreenButton = $('room05-fullscreen-button');
+      return;
+    }
+
+    controls = document.createElement('div');
+    controls.id = 'room05-top-controls';
+    controls.className = 'room05-top-controls';
+    controls.setAttribute('aria-label', 'Page and account controls');
+
+    fullscreenButton = document.createElement('button');
+    fullscreenButton.id = 'room05-fullscreen-button';
+    fullscreenButton.className = 'room05-control-button room05-fullscreen-button';
+    fullscreenButton.type = 'button';
+    fullscreenButton.textContent = 'FULLSCREEN';
+    fullscreenButton.setAttribute('aria-label', 'Enter fullscreen');
+    fullscreenButton.title = 'Enter fullscreen';
+
+    const profile = document.createElement('div');
+    profile.className = 'room05-profile';
+
+    profileButton = document.createElement('button');
+    profileButton.id = 'room05-profile-button';
+    profileButton.className = 'room05-control-button room05-profile-button';
+    profileButton.type = 'button';
+    profileButton.hidden = true;
+    profileButton.setAttribute('aria-haspopup', 'dialog');
+    profileButton.setAttribute('aria-expanded', 'false');
+    profileButton.setAttribute('aria-label', 'Open profile menu');
+
+    const avatar = document.createElement('span');
+    avatar.className = 'room05-profile-avatar';
+    avatar.id = 'room05-profile-avatar';
+    avatar.setAttribute('aria-hidden', 'true');
+    avatar.textContent = 'U';
+    profileButton.appendChild(avatar);
+
+    profileMenu = document.createElement('section');
+    profileMenu.id = 'room05-profile-menu';
+    profileMenu.className = 'room05-profile-menu';
+    profileMenu.hidden = true;
+    profileMenu.setAttribute('aria-label', 'Profile');
+
+    const menuKicker = document.createElement('div');
+    menuKicker.className = 'room05-profile-kicker';
+    menuKicker.textContent = 'ACCOUNT';
+
+    const username = document.createElement('div');
+    username.id = 'room05-profile-username';
+    username.className = 'room05-profile-username';
+
+    const idBadge = document.createElement('div');
+    idBadge.className = 'room05-id-badge';
+    const idLabel = document.createElement('span');
+    idLabel.textContent = 'ROOM/05 USER ID';
+    const idValue = document.createElement('strong');
+    idValue.id = 'room05-profile-user-id';
+    idBadge.append(idLabel, idValue);
+
+    logoutButton = document.createElement('button');
+    logoutButton.id = 'room05-profile-logout';
+    logoutButton.className = 'room05-profile-logout';
+    logoutButton.type = 'button';
+    logoutButton.textContent = 'LOG OUT';
+
+    profileMenu.append(menuKicker, username, idBadge, logoutButton);
+    profile.append(profileButton, profileMenu);
+    controls.append(fullscreenButton, profile);
+    document.body.appendChild(controls);
+
+    fullscreenButton.addEventListener('click', toggleFullscreen);
+    profileButton.addEventListener('click', (event) => {
+      event.stopPropagation();
+      setProfileMenuOpen(profileMenu.hidden);
+    });
+    logoutButton.addEventListener('click', logout);
+
+    document.addEventListener('pointerdown', (event) => {
+      if (!controls.contains(event.target)) setProfileMenuOpen(false);
+    });
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') setProfileMenuOpen(false);
+    });
+    document.addEventListener('fullscreenchange', updateFullscreenButton);
+    document.addEventListener('webkitfullscreenchange', updateFullscreenButton);
+    updateFullscreenButton();
+  }
+
+  function setProfileMenuOpen(open) {
+    if (!profileMenu || !profileButton) return;
+    profileMenu.hidden = !open;
+    profileButton.setAttribute('aria-expanded', String(open));
+    if (open) logoutButton.focus({ preventScroll: true });
+  }
+
+  function updateFullscreenButton() {
+    if (!fullscreenButton) return;
+    const active = !!(document.fullscreenElement || document.webkitFullscreenElement);
+    fullscreenButton.textContent = active ? 'EXIT FULLSCREEN' : 'FULLSCREEN';
+    fullscreenButton.setAttribute('aria-label', active ? 'Exit fullscreen' : 'Enter fullscreen');
+    fullscreenButton.title = active ? 'Exit fullscreen' : 'Enter fullscreen';
+  }
+
+  async function toggleFullscreen() {
+    const active = !!(document.fullscreenElement || document.webkitFullscreenElement);
+    try {
+      if (active) {
+        const exit = document.exitFullscreen || document.webkitExitFullscreen;
+        if (exit) await exit.call(document);
+      } else {
+        const root = document.documentElement;
+        const enter = root.requestFullscreen || root.webkitRequestFullscreen;
+        if (enter) await enter.call(root);
+        else fullscreenButton.title = 'Fullscreen is not supported by this browser';
+      }
+    } catch (error) {
+      console.warn('Fullscreen could not be changed:', error);
+    }
+    updateFullscreenButton();
+  }
 
   function consentIsCurrent() {
     try {
@@ -56,17 +188,30 @@
     currentUser = user;
     authOverlay.classList.add('hidden');
     legalOverlay.classList.add('hidden');
-    accountChip.classList.add('visible');
-    $('account-identity').textContent = `USER ID ${user.userId}`;
-    $('account-identity').title = `${user.username} · ${user.userId}`;
+
+    // Keep the legacy chip hidden; the new profile menu replaces its always-visible logout action.
+    if (accountChip) accountChip.classList.remove('visible');
+    if ($('account-identity')) {
+      $('account-identity').textContent = `USER ID ${user.userId}`;
+      $('account-identity').title = `${user.username} · ${user.userId}`;
+    }
     if ($('display-name')) $('display-name').value = user.username;
+
+    $('room05-profile-username').textContent = user.username;
+    $('room05-profile-user-id').textContent = user.userId;
+    $('room05-profile-avatar').textContent = String(user.username || 'U').trim().charAt(0).toUpperCase() || 'U';
+    profileButton.hidden = false;
+    profileButton.setAttribute('aria-label', `Open profile menu for ${user.username}`);
+    setProfileMenuOpen(false);
     document.dispatchEvent(new CustomEvent('room05:authenticated', { detail: user }));
   }
 
   function showAuth(message) {
     authOverlay.classList.remove('hidden');
     legalOverlay.classList.add('hidden');
-    accountChip.classList.remove('visible');
+    if (accountChip) accountChip.classList.remove('visible');
+    if (profileButton) profileButton.hidden = true;
+    setProfileMenuOpen(false);
     authError.textContent = message || '';
     usernameInput.focus();
   }
@@ -99,6 +244,14 @@
       }
     } catch (_) { /* No valid login yet; show sign-in. */ }
     showAuth('');
+  }
+
+  async function logout() {
+    if (logoutButton) logoutButton.disabled = true;
+    try { await api('/api/logout', {}); } catch (_) {}
+    try { localStorage.removeItem(CONSENT_KEY); } catch (_) {}
+    currentUser = null;
+    window.location.href = '/';
   }
 
   legalCheck.addEventListener('change', () => { legalContinue.disabled = !legalCheck.checked; });
@@ -144,7 +297,6 @@
         const success = $('auth-success');
         success.textContent = `Your account is ready. Your permanent ROOM/05 ID is ${result.user.userId}. Keep your password safe; password recovery is not available.`;
         success.classList.remove('hidden');
-        // The signed-in state is active; the message remains available in the account chip.
       }
     } catch (error) {
       authError.textContent = error.message || 'Could not sign in. Please try again.';
@@ -155,15 +307,8 @@
     }
   });
 
-  $('account-logout').addEventListener('click', async () => {
-    $('account-logout').disabled = true;
-    try { await api('/api/logout', {}); } catch (_) {}
-    try { localStorage.removeItem(CONSENT_KEY); } catch (_) {}
-    currentUser = null;
-    window.location.href = '/';
-  });
-
   async function bootstrap() {
+    createTopControls();
     setMode('login');
     if (!consentIsCurrent()) {
       legalOverlay.classList.remove('hidden');
@@ -188,7 +333,7 @@
 
   window.ROOM05_AUTH = {
     get user() { return currentUser; },
-    logout: () => $('account-logout').click()
+    logout
   };
   bootstrap();
 })();

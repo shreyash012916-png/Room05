@@ -43,3 +43,151 @@
   .auth-link-card { padding: 11px; }
   .account-chip { top: 72px; right: 10px; padding: 7px 9px; }
 }
+
+/* Low-friction touch behavior without changing the site's visual design. */
+html { scroll-behavior: smooth; }
+*, *::before, *::after { -webkit-tap-highlight-color: transparent; }
+a, button, [role="button"], [tabindex]:not([tabindex="-1"]) {
+  touch-action: manipulation;
+}
+
+/* ROOM/05 top controls: fullscreen is always available; profile appears after login. */
+.room05-top-controls {
+  position: fixed;
+  z-index: 5001;
+  top: 16px;
+  right: 18px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-family: var(--mono, 'DM Mono', monospace);
+}
+.room05-control-button {
+  min-height: 42px;
+  border: 1px solid var(--line-strong, #9a9b8d);
+  background: var(--paper, #e9e6dc);
+  color: var(--ink, #181914);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color .18s ease, color .18s ease, border-color .18s ease, box-shadow .18s ease, transform .18s ease;
+  -webkit-appearance: none;
+  appearance: none;
+}
+.room05-fullscreen-button {
+  padding: 0 13px;
+  font: 9px var(--mono, 'DM Mono', monospace);
+  letter-spacing: .07em;
+  white-space: nowrap;
+}
+.room05-control-button:hover {
+  background: var(--paper-2, #dedbcf);
+  border-color: var(--ink, #181914);
+}
+.room05-control-button:active { transform: translateY(1px); }
+.room05-control-button:focus-visible,
+.room05-profile-logout:focus-visible {
+  outline: 2px solid var(--ink, #181914);
+  outline-offset: 3px;
+}
+.room05-profile { position: relative; }
+.room05-profile-button {
+  width: 42px;
+  height: 42px;
+  padding: 4px;
+  border-radius: 50%;
+}
+.room05-profile-button[hidden] { display: none !important; }
+.room05-profile-avatar {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--ink, #181914);
+  color: var(--paper, #e9e6dc);
+  font: 700 12px var(--display, 'Space Grotesk', sans-serif);
+  text-transform: uppercase;
+}
+.room05-profile-menu {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  width: min(290px, calc(100vw - 24px));
+  padding: 18px;
+  border: 1px solid var(--line-strong, #9a9b8d);
+  background: var(--paper, #e9e6dc);
+  color: var(--ink, #181914);
+  box-shadow: 5px 5px 0 var(--shadow-c, rgba(0,0,0,.16));
+  transform-origin: top right;
+  animation: room05-menu-in .16s ease-out both;
+}
+.room05-profile-menu[hidden] { display: none !important; }
+@keyframes room05-menu-in {
+  from { opacity: 0; transform: translateY(-5px) scale(.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.room05-profile-kicker {
+  color: var(--muted, #77796e);
+  font: 9px var(--mono, 'DM Mono', monospace);
+  letter-spacing: .13em;
+}
+.room05-profile-username {
+  margin-top: 8px;
+  font: 600 19px/1.2 var(--display, 'Space Grotesk', sans-serif);
+  overflow-wrap: anywhere;
+}
+.room05-id-badge {
+  display: grid;
+  gap: 6px;
+  margin-top: 15px;
+  padding: 11px 12px;
+  border: 1px solid var(--line-strong, #9a9b8d);
+  background: var(--paper-2, #dedbcf);
+}
+.room05-id-badge span {
+  color: var(--muted, #77796e);
+  font: 8px var(--mono, 'DM Mono', monospace);
+  letter-spacing: .1em;
+}
+.room05-id-badge strong {
+  font: 600 12px var(--mono, 'DM Mono', monospace);
+  overflow-wrap: anywhere;
+  letter-spacing: .04em;
+}
+.room05-profile-logout {
+  width: 100%;
+  min-height: 42px;
+  margin-top: 14px;
+  padding: 0 12px;
+  border: 1px solid var(--ink, #181914);
+  background: var(--ink, #181914);
+  color: var(--paper, #e9e6dc);
+  cursor: pointer;
+  text-align: left;
+  font: 9px var(--mono, 'DM Mono', monospace);
+  letter-spacing: .08em;
+  transition: background-color .18s ease, color .18s ease, opacity .18s ease;
+}
+.room05-profile-logout:hover:not(:disabled) {
+  background: var(--red, #e34b35);
+  border-color: var(--red, #e34b35);
+}
+.room05-profile-logout:disabled { opacity: .55; cursor: wait; }
+
+/* The old inline ID/logout chip is replaced by the profile menu above. */
+.account-chip { display: none !important; }
+
+@media (max-width: 600px) {
+  .room05-top-controls { top: 10px; right: 10px; gap: 7px; }
+  .room05-control-button { min-height: 38px; }
+  .room05-profile-button { width: 38px; height: 38px; }
+  .room05-profile-avatar { width: 28px; height: 28px; }
+  .room05-fullscreen-button { padding: 0 10px; font-size: 8px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .room05-control-button, .room05-profile-logout { transition: none; }
+  .room05-profile-menu { animation: none; }
+}

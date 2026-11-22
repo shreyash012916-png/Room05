@@ -1,4 +1,10 @@
-# ROOM/05 v6.10.2
+# ROOM/05 v6.10.3
+
+## v6.10.3 final UI layering and dance effect timing
+- Live-room profile and theme menus now have a dedicated top stacking layer above participant video tiles and the room body.
+- The 🪩 colour wash and falling confetti continue for the complete dance audio, ending when the audio track ends (with a duration fallback when playback is muted or blocked).
+- All v6.10.2 website features and supplied media assets are preserved.
+
 
 ## v6.10.2 dance reaction audio
 

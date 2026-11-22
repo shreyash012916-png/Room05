@@ -598,3 +598,25 @@ button, a, input, select { -webkit-tap-highlight-color: transparent; }
 .audio-unlock-prompt { position: fixed; z-index: 8500; top: max(74px, env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); padding: 11px 16px; border: 2px solid var(--ink); border-radius: 2px; background: var(--lime); color: #171914; box-shadow: 4px 4px 0 var(--shadow-c); font: 800 10px var(--mono); letter-spacing: .06em; cursor: pointer; white-space: nowrap; }
 .control-button.has-unread { border-color: var(--red); }
 .control-button.has-unread::after { content: ''; position: absolute; top: 5px; right: 6px; width: 7px; height: 7px; border-radius: 50%; background: var(--red); }
+
+
+/* ROOM/05 v6.10.3 — keep live-room profile and theme menus above all video layers. */
+#call-screen > .call-topbar {
+  position: relative !important;
+  z-index: 9001 !important;
+  isolation: isolate;
+}
+#call-screen > .call-body,
+#call-screen > .call-footer {
+  position: relative;
+  z-index: 2;
+}
+#call-screen > .call-topbar .call-top-actions,
+#call-screen > .call-topbar .room05-profile {
+  position: relative;
+  z-index: 9002;
+}
+#call-screen > .call-topbar .room05-profile-menu,
+#call-screen > .call-topbar .theme-pop {
+  z-index: 9003 !important;
+}

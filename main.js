@@ -1954,7 +1954,7 @@
   }
 
   // ---------- party mode, exact supplied sounds, exclusive room reactions ----------
-  let partyBurstTimers = [];
+  let partyConfettiTimer = null;
   let roomAudioPrimed = false;
 
   const airhornAudio = new Audio('/airhorn-original.m4a');
@@ -1975,7 +1975,11 @@
   danceTrackAudio.preload = 'auto';
   danceTrackAudio.loop = false;
   danceTrackAudio.volume = 1;
-  danceTrackAudio.addEventListener('ended', () => { try { danceTrackAudio.currentTime = 0; } catch (_) {} });
+  danceTrackAudio.addEventListener('ended', () => {
+    finishPartyVisuals();
+    try { danceTrackAudio.currentTime = 0; } catch (_) {}
+  });
+  danceTrackAudio.addEventListener('error', finishPartyVisuals);
 
   function primeRoomAudio() {
     if (roomAudioPrimed || !prefs.sound) return;
@@ -2039,8 +2043,7 @@
 
   function clearActiveRoomEffect() {
     clearTimeout(partyTimer); partyTimer = null;
-    partyBurstTimers.forEach((timer) => clearTimeout(timer));
-    partyBurstTimers = [];
+    clearInterval(partyConfettiTimer); partyConfettiTimer = null;
     clearTimeout(aartiTimer); aartiTimer = null;
     if (callScreen) {
       callScreen.classList.remove('party');
@@ -2071,6 +2074,14 @@
     }
   }
 
+  function finishPartyVisuals() {
+    clearTimeout(partyTimer); partyTimer = null;
+    clearInterval(partyConfettiTimer); partyConfettiTimer = null;
+    if (!callScreen) return;
+    callScreen.classList.remove('party');
+    callScreen.querySelectorAll('.party-banner, .room05-confetti').forEach((node) => node.remove());
+  }
+
   function party() {
     if (!callScreen || callScreen.classList.contains('hidden')) return;
     playDanceTrack();
@@ -2079,18 +2090,19 @@
     banner.className = 'party-banner';
     banner.textContent = '🪩 PARTY MODE';
     callScreen.appendChild(banner);
+
+    // Keep the colour wash and fresh falling confetti active for the entire
+    // supplied dance clip. The audio's ended event is authoritative; this
+    // duration fallback also handles muted/blocked playback gracefully.
     confetti();
-    partyBurstTimers.push(window.setTimeout(confetti, 700));
-    partyBurstTimers.push(window.setTimeout(confetti, 1500));
+    partyConfettiTimer = window.setInterval(confetti, 850);
+    const knownDuration = Number.isFinite(danceTrackAudio.duration) && danceTrackAudio.duration > 0
+      ? danceTrackAudio.duration * 1000
+      : 42120; // Uploaded clip duration when metadata is not ready yet.
+    partyTimer = window.setTimeout(finishPartyVisuals, Math.max(1000, knownDuration + 350));
+
     buzz([30, 40, 30, 40, 60]);
     blip('join');
-    partyTimer = window.setTimeout(() => {
-      callScreen.classList.remove('party');
-      banner.remove();
-      callScreen.querySelectorAll('.room05-confetti').forEach((node) => node.remove());
-      partyBurstTimers = [];
-      partyTimer = null;
-    }, 9000);
   }
 
   function airhorn() {

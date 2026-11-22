@@ -25,54 +25,148 @@
   let profileMenu;
   let logoutButton;
   let fullscreenButton;
+  let profileAvatar;
+  let fullscreenIcon;
 
-  /* These controls are created here so the existing page markup and backend stay untouched. */
-  function createTopControls() {
-    if (document.getElementById('room05-top-controls')) {
-      controls = $('room05-top-controls');
-      profileButton = $('room05-profile-button');
-      profileMenu = $('room05-profile-menu');
-      logoutButton = $('room05-profile-logout');
-      fullscreenButton = $('room05-fullscreen-button');
-      return;
+  function svgIcon(markup) {
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('viewBox', '0 0 24 24');
+    svg.setAttribute('width', '20');
+    svg.setAttribute('height', '20');
+    svg.setAttribute('fill', 'none');
+    svg.setAttribute('stroke', 'currentColor');
+    svg.setAttribute('stroke-width', '1.8');
+    svg.setAttribute('stroke-linecap', 'round');
+    svg.setAttribute('stroke-linejoin', 'round');
+    svg.setAttribute('aria-hidden', 'true');
+    svg.innerHTML = markup;
+    return svg;
+  }
+
+  function isVisible(element) {
+    return !!(element && element.getClientRects && element.getClientRects().length);
+  }
+
+  function findCameraControl() {
+    const clickableSelector = 'button, a, [role="button"], [tabindex]:not([tabindex="-1"])';
+    const candidates = Array.from(document.querySelectorAll(
+      `${clickableSelector}, [class*="camera" i], [id*="camera" i], [data-action*="camera" i], [data-icon*="camera" i]`
+    ));
+    const controlsFound = new Set();
+
+    candidates.forEach((candidate) => {
+      const description = [
+        candidate.id,
+        candidate.className && (typeof candidate.className === 'string' ? candidate.className : ''),
+        candidate.getAttribute('aria-label'),
+        candidate.getAttribute('title'),
+        candidate.getAttribute('data-action'),
+        candidate.getAttribute('data-icon'),
+        candidate.textContent
+      ].join(' ').toLowerCase();
+      if (!description.includes('camera')) return;
+      const clickable = candidate.matches(clickableSelector)
+        ? candidate
+        : candidate.closest(clickableSelector);
+      if (clickable && isVisible(clickable)) controlsFound.add(clickable);
+    });
+
+    return Array.from(controlsFound).sort((a, b) =>
+      a.getBoundingClientRect().top - b.getBoundingClientRect().top ||
+      a.getBoundingClientRect().left - b.getBoundingClientRect().left
+    )[0] || null;
+  }
+
+  function findToolbarHost(cameraControl) {
+    if (cameraControl) {
+      const namedToolbar = cameraControl.closest(
+        '[role="toolbar"], [class*="toolbar" i], [id*="toolbar" i], [class*="tool-group" i], [class*="action-bar" i], [class*="control-group" i]'
+      );
+      if (namedToolbar) return { host: namedToolbar, cameraControl };
+
+      let ancestor = cameraControl.parentElement;
+      for (let depth = 0; ancestor && depth < 4; depth += 1, ancestor = ancestor.parentElement) {
+        const style = window.getComputedStyle(ancestor);
+        const interactiveCount = ancestor.querySelectorAll('button, a, [role="button"]').length;
+        if (interactiveCount >= 2 && (style.display === 'flex' || style.display === 'inline-flex' || style.display === 'grid')) {
+          return { host: ancestor, cameraControl };
+        }
+      }
+
+      if (cameraControl.parentElement) return { host: cameraControl.parentElement, cameraControl };
     }
 
+    const fallbackSelectors = [
+      '[role="toolbar"]',
+      'header nav',
+      'header',
+      'nav',
+      '[class*="toolbar" i]',
+      '[class*="topbar" i]',
+      '[class*="top-bar" i]',
+      '[class*="action-bar" i]',
+      '[class*="controls-bar" i]'
+    ];
+    const fallbacks = fallbackSelectors.flatMap((selector) => Array.from(document.querySelectorAll(selector)));
+    const host = fallbacks
+      .filter((element) => isVisible(element) && element.querySelector('button, a, [role="button"]'))
+      .sort((a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top)[0];
+    if (host) return { host, cameraControl: null };
+
+    const appRoot = document.querySelector('main, #app, #root, .app, .site-shell');
+    if (appRoot) return { host: appRoot, cameraControl: null, fallback: true };
+    return { host: document.body, cameraControl: null, fallback: true };
+  }
+
+  function directChildWithin(ancestor, descendant) {
+    let child = descendant;
+    while (child && child.parentElement && child.parentElement !== ancestor) child = child.parentElement;
+    return child && child.parentElement === ancestor ? child : null;
+  }
+
+  function insertControlsIntoToolbar() {
+    const cameraControl = findCameraControl();
+    const target = findToolbarHost(cameraControl);
+    const host = target.host;
+    if (!host) return;
+
+    if (target.fallback) controls.classList.add('room05-controls-fallback');
+    const reference = target.cameraControl ? directChildWithin(host, target.cameraControl) : null;
+    host.insertBefore(controls, reference);
+  }
+
+  /* The two compact actions join the existing camera/tool control group; they are not fixed overlays. */
+  function createTopControls() {
     controls = document.createElement('div');
     controls.id = 'room05-top-controls';
     controls.className = 'room05-top-controls';
     controls.setAttribute('aria-label', 'Page and account controls');
-
-    fullscreenButton = document.createElement('button');
-    fullscreenButton.id = 'room05-fullscreen-button';
-    fullscreenButton.className = 'room05-control-button room05-fullscreen-button';
-    fullscreenButton.type = 'button';
-    fullscreenButton.textContent = 'FULLSCREEN';
-    fullscreenButton.setAttribute('aria-label', 'Enter fullscreen');
-    fullscreenButton.title = 'Enter fullscreen';
 
     const profile = document.createElement('div');
     profile.className = 'room05-profile';
 
     profileButton = document.createElement('button');
     profileButton.id = 'room05-profile-button';
-    profileButton.className = 'room05-control-button room05-profile-button';
+    profileButton.className = 'room05-toolbar-action room05-profile-button';
     profileButton.type = 'button';
     profileButton.hidden = true;
     profileButton.setAttribute('aria-haspopup', 'dialog');
     profileButton.setAttribute('aria-expanded', 'false');
     profileButton.setAttribute('aria-label', 'Open profile menu');
+    profileButton.title = 'Profile';
 
-    const avatar = document.createElement('span');
-    avatar.className = 'room05-profile-avatar';
-    avatar.id = 'room05-profile-avatar';
-    avatar.setAttribute('aria-hidden', 'true');
-    avatar.textContent = 'U';
-    profileButton.appendChild(avatar);
+    profileAvatar = document.createElement('span');
+    profileAvatar.className = 'room05-profile-avatar';
+    profileAvatar.id = 'room05-profile-avatar';
+    profileAvatar.setAttribute('aria-hidden', 'true');
+    profileAvatar.textContent = 'U';
+    profileButton.appendChild(profileAvatar);
 
     profileMenu = document.createElement('section');
     profileMenu.id = 'room05-profile-menu';
     profileMenu.className = 'room05-profile-menu';
     profileMenu.hidden = true;
+    profileMenu.setAttribute('role', 'dialog');
     profileMenu.setAttribute('aria-label', 'Profile');
 
     const menuKicker = document.createElement('div');
@@ -99,8 +193,21 @@
 
     profileMenu.append(menuKicker, username, idBadge, logoutButton);
     profile.append(profileButton, profileMenu);
-    controls.append(fullscreenButton, profile);
-    document.body.appendChild(controls);
+
+    fullscreenButton = document.createElement('button');
+    fullscreenButton.id = 'room05-fullscreen-button';
+    fullscreenButton.className = 'room05-toolbar-action room05-fullscreen-button';
+    fullscreenButton.type = 'button';
+    fullscreenButton.setAttribute('aria-label', 'Enter fullscreen');
+    fullscreenButton.title = 'Enter fullscreen';
+    fullscreenIcon = svgIcon(
+      '<path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M16 3h3a2 2 0 0 1 2 2v3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M21 16v3a2 2 0 0 1-2 2h-3"/>'
+    );
+    fullscreenButton.appendChild(fullscreenIcon);
+
+    /* Profile is deliberately first (left); fullscreen is a small icon beside it. */
+    controls.append(profile, fullscreenButton);
+    insertControlsIntoToolbar();
 
     fullscreenButton.addEventListener('click', toggleFullscreen);
     profileButton.addEventListener('click', (event) => {
@@ -124,15 +231,22 @@
     if (!profileMenu || !profileButton) return;
     profileMenu.hidden = !open;
     profileButton.setAttribute('aria-expanded', String(open));
-    if (open) logoutButton.focus({ preventScroll: true });
+    profileButton.classList.toggle('is-open', open);
+    if (open) {
+      const bounds = profileButton.getBoundingClientRect();
+      const shouldAlignRight = bounds.left + 290 > window.innerWidth - 12;
+      profileMenu.classList.toggle('align-right', shouldAlignRight);
+    }
   }
 
   function updateFullscreenButton() {
-    if (!fullscreenButton) return;
+    if (!fullscreenButton || !fullscreenIcon) return;
     const active = !!(document.fullscreenElement || document.webkitFullscreenElement);
-    fullscreenButton.textContent = active ? 'EXIT FULLSCREEN' : 'FULLSCREEN';
     fullscreenButton.setAttribute('aria-label', active ? 'Exit fullscreen' : 'Enter fullscreen');
     fullscreenButton.title = active ? 'Exit fullscreen' : 'Enter fullscreen';
+    fullscreenIcon.innerHTML = active
+      ? '<path d="M8 3v5H3"/><path d="M3 8l6-5"/><path d="M16 3v5h5"/><path d="M21 8l-6-5"/><path d="M3 16l6 5"/><path d="M3 16h5v5"/><path d="M21 16l-6 5"/><path d="M21 16h-5v5"/>'
+      : '<path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M16 3h3a2 2 0 0 1 2 2v3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M21 16v3a2 2 0 0 1-2 2h-3"/>';
   }
 
   async function toggleFullscreen() {

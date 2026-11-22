@@ -44,60 +44,63 @@
   .account-chip { top: 72px; right: 10px; padding: 7px 9px; }
 }
 
-/* Low-friction touch behavior without changing the site's visual design. */
+/* Smooth touch feedback and compact controls integrated into the existing tool bar. */
 html { scroll-behavior: smooth; }
-*, *::before, *::after { -webkit-tap-highlight-color: transparent; }
-a, button, [role="button"], [tabindex]:not([tabindex="-1"]) {
-  touch-action: manipulation;
-}
+*, *::before, *::after { -webkit-tap-highlight-color: transparent !important; }
+a, button, [role="button"], [tabindex]:not([tabindex="-1"]) { touch-action: manipulation; }
+:focus:not(:focus-visible) { outline: none; }
 
-/* ROOM/05 top controls: fullscreen is always available; profile appears after login. */
-.room05-top-controls {
-  position: fixed;
-  z-index: 5001;
-  top: 16px;
-  right: 18px;
+/* display:contents lets these controls become normal siblings of the camera/tool icons. */
+.room05-top-controls { display: contents; }
+.room05-controls-fallback {
   display: flex;
   align-items: center;
-  gap: 9px;
-  font-family: var(--mono, 'DM Mono', monospace);
+  justify-content: flex-start;
+  gap: 7px;
+  width: 100%;
+  padding: 7px 10px;
+  position: static;
 }
-.room05-control-button {
-  min-height: 42px;
-  border: 1px solid var(--line-strong, #9a9b8d);
-  background: var(--paper, #e9e6dc);
-  color: var(--ink, #181914);
-  cursor: pointer;
+.room05-profile {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  vertical-align: middle;
+}
+.room05-toolbar-action {
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  min-height: 36px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  transition: background-color .18s ease, color .18s ease, border-color .18s ease, box-shadow .18s ease, transform .18s ease;
+  padding: 0;
+  margin: 0 3px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  vertical-align: middle;
   -webkit-appearance: none;
   appearance: none;
+  transition: opacity .14s ease, background-color .14s ease;
 }
-.room05-fullscreen-button {
-  padding: 0 13px;
-  font: 9px var(--mono, 'DM Mono', monospace);
-  letter-spacing: .07em;
-  white-space: nowrap;
+.room05-toolbar-action:hover,
+.room05-toolbar-action:focus,
+.room05-toolbar-action:focus-visible {
+  background: transparent;
+  color: inherit;
 }
-.room05-control-button:hover {
-  background: var(--paper-2, #dedbcf);
-  border-color: var(--ink, #181914);
-}
-.room05-control-button:active { transform: translateY(1px); }
-.room05-control-button:focus-visible,
+.room05-toolbar-action:active { opacity: .68; }
+.room05-toolbar-action:focus-visible,
 .room05-profile-logout:focus-visible {
-  outline: 2px solid var(--ink, #181914);
+  outline: 2px solid var(--ink, currentColor);
   outline-offset: 3px;
 }
-.room05-profile { position: relative; }
-.room05-profile-button {
-  width: 42px;
-  height: 42px;
-  padding: 4px;
-  border-radius: 50%;
-}
+.room05-toolbar-action svg { display: block; width: 20px; height: 20px; pointer-events: none; }
 .room05-profile-button[hidden] { display: none !important; }
 .room05-profile-avatar {
   width: 30px;
@@ -112,21 +115,28 @@ a, button, [role="button"], [tabindex]:not([tabindex="-1"]) {
 }
 .room05-profile-menu {
   position: absolute;
-  top: calc(100% + 10px);
-  right: 0;
-  width: min(290px, calc(100vw - 24px));
-  padding: 18px;
+  z-index: 7000;
+  top: calc(100% + 8px);
+  left: 0;
+  right: auto;
+  width: min(280px, calc(100vw - 24px));
+  padding: 17px;
   border: 1px solid var(--line-strong, #9a9b8d);
   background: var(--paper, #e9e6dc);
   color: var(--ink, #181914);
-  box-shadow: 5px 5px 0 var(--shadow-c, rgba(0,0,0,.16));
+  box-shadow: 4px 4px 0 var(--shadow-c, rgba(0,0,0,.14));
+  transform-origin: top left;
+  animation: room05-menu-in .14s ease-out both;
+}
+.room05-profile-menu.align-right {
+  left: auto;
+  right: 0;
   transform-origin: top right;
-  animation: room05-menu-in .16s ease-out both;
 }
 .room05-profile-menu[hidden] { display: none !important; }
 @keyframes room05-menu-in {
-  from { opacity: 0; transform: translateY(-5px) scale(.985); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
+  from { opacity: 0; transform: translateY(-3px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 .room05-profile-kicker {
   color: var(--muted, #77796e);
@@ -141,7 +151,7 @@ a, button, [role="button"], [tabindex]:not([tabindex="-1"]) {
 .room05-id-badge {
   display: grid;
   gap: 6px;
-  margin-top: 15px;
+  margin-top: 14px;
   padding: 11px 12px;
   border: 1px solid var(--line-strong, #9a9b8d);
   background: var(--paper-2, #dedbcf);
@@ -158,8 +168,8 @@ a, button, [role="button"], [tabindex]:not([tabindex="-1"]) {
 }
 .room05-profile-logout {
   width: 100%;
-  min-height: 42px;
-  margin-top: 14px;
+  min-height: 40px;
+  margin-top: 13px;
   padding: 0 12px;
   border: 1px solid var(--ink, #181914);
   background: var(--ink, #181914);
@@ -168,26 +178,22 @@ a, button, [role="button"], [tabindex]:not([tabindex="-1"]) {
   text-align: left;
   font: 9px var(--mono, 'DM Mono', monospace);
   letter-spacing: .08em;
-  transition: background-color .18s ease, color .18s ease, opacity .18s ease;
+  transition: opacity .14s ease;
 }
-.room05-profile-logout:hover:not(:disabled) {
-  background: var(--red, #e34b35);
-  border-color: var(--red, #e34b35);
-}
+.room05-profile-logout:hover:not(:disabled) { background: var(--ink, #181914); color: var(--paper, #e9e6dc); }
+.room05-profile-logout:active { opacity: .72; }
 .room05-profile-logout:disabled { opacity: .55; cursor: wait; }
 
-/* The old inline ID/logout chip is replaced by the profile menu above. */
+/* The legacy always-visible chip stays hidden; logout is only inside the profile menu. */
 .account-chip { display: none !important; }
 
 @media (max-width: 600px) {
-  .room05-top-controls { top: 10px; right: 10px; gap: 7px; }
-  .room05-control-button { min-height: 38px; }
-  .room05-profile-button { width: 38px; height: 38px; }
-  .room05-profile-avatar { width: 28px; height: 28px; }
-  .room05-fullscreen-button { padding: 0 10px; font-size: 8px; }
+  .room05-toolbar-action { width: 34px; height: 34px; min-width: 34px; min-height: 34px; margin-inline: 2px; }
+  .room05-profile-avatar { width: 29px; height: 29px; }
+  .room05-profile-menu { width: min(270px, calc(100vw - 20px)); }
 }
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
-  .room05-control-button, .room05-profile-logout { transition: none; }
+  .room05-toolbar-action, .room05-profile-logout { transition: none; }
   .room05-profile-menu { animation: none; }
 }

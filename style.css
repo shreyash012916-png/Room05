@@ -1,8 +1,7 @@
-@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;600;700&display=swap');
 :root {
   --paper:#e9e6dc; --paper-2:#dedbcf; --ink:#181914; --ink-soft:#44463d; --muted:#74766c;
   --line:#c8c6b9; --line-strong:#999b8c; --red:#e34b35; --lime:#d9ff00; --acid:#d9ff00; --blue:#79b9df; --shadow-c:rgba(20,22,15,.16);
-  --display:'Space Grotesk',sans-serif; --mono:'DM Mono',monospace;
+  --display:'Manrope',sans-serif; --mono:'IBM Plex Mono',monospace;
   color-scheme:light;
 }
 :root[data-mode="dark"] { color-scheme:dark; --acid:var(--lime); --blue:#79b9df; --paper:#0f110e; --paper-2:#1a1d17; --ink:#f0eee5; --ink-soft:#d2d0c4; --muted:#9a9b8e; --line:#35382f; --line-strong:#62665a; --shadow-c:rgba(0,0,0,.4); }

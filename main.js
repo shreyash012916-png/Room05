@@ -1334,19 +1334,57 @@
     }, 9000);
   }
   function airhorn() {
+    // Original meme-style bass impact, synthesized locally (no external audio asset).
     if (!prefs.sound) return;
     try {
       audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
-      if (audioCtx.state === 'suspended') audioCtx.resume();
-      const t0 = audioCtx.currentTime;
-      [0, 0.28, 0.56].forEach((d, i) => {
-        [440, 554, 659].forEach((f) => {
-          const o = audioCtx.createOscillator(), g = audioCtx.createGain();
-          o.type = 'sawtooth'; o.frequency.setValueAtTime(f * 0.97, t0 + d); o.frequency.linearRampToValueAtTime(f * (i === 2 ? 1.1 : 1), t0 + d + 0.05);
-          g.gain.setValueAtTime(0.0001, t0 + d); g.gain.exponentialRampToValueAtTime(0.07, t0 + d + 0.02); g.gain.setValueAtTime(0.07, t0 + d + (i === 2 ? 0.5 : 0.18)); g.gain.exponentialRampToValueAtTime(0.0001, t0 + d + (i === 2 ? 0.7 : 0.24));
-          o.connect(g); g.connect(audioCtx.destination); o.start(t0 + d); o.stop(t0 + d + 0.75);
-        });
-      });
+      const ctx = audioCtx;
+      if (ctx.state === 'suspended') ctx.resume();
+      const t0 = ctx.currentTime + 0.015;
+      const master = ctx.createGain();
+      master.gain.setValueAtTime(0.72, t0);
+      master.connect(ctx.destination);
+
+      // Deep descending sub-bass gives the familiar punchy meme-boom feel.
+      const sub = ctx.createOscillator();
+      const subGain = ctx.createGain();
+      sub.type = 'sine';
+      sub.frequency.setValueAtTime(104, t0);
+      sub.frequency.exponentialRampToValueAtTime(43, t0 + 0.52);
+      subGain.gain.setValueAtTime(0.0001, t0);
+      subGain.gain.exponentialRampToValueAtTime(0.72, t0 + 0.018);
+      subGain.gain.setValueAtTime(0.72, t0 + 0.09);
+      subGain.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.82);
+      sub.connect(subGain); subGain.connect(master);
+      sub.start(t0); sub.stop(t0 + 0.84);
+
+      // A restrained upper harmonic makes the hit audible on phone speakers.
+      const body = ctx.createOscillator();
+      const bodyGain = ctx.createGain();
+      body.type = 'triangle';
+      body.frequency.setValueAtTime(188, t0);
+      body.frequency.exponentialRampToValueAtTime(72, t0 + 0.42);
+      bodyGain.gain.setValueAtTime(0.0001, t0);
+      bodyGain.gain.exponentialRampToValueAtTime(0.19, t0 + 0.012);
+      bodyGain.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.48);
+      body.connect(bodyGain); bodyGain.connect(master);
+      body.start(t0); body.stop(t0 + 0.5);
+
+      // Tiny filtered transient adds impact without a harsh, loud click.
+      const noiseBuffer = ctx.createBuffer(1, Math.max(1, Math.floor(ctx.sampleRate * 0.12)), ctx.sampleRate);
+      const noiseData = noiseBuffer.getChannelData(0);
+      for (let i = 0; i < noiseData.length; i++) noiseData[i] = (Math.random() * 2 - 1) * (1 - i / noiseData.length);
+      const noise = ctx.createBufferSource();
+      const filter = ctx.createBiquadFilter();
+      const noiseGain = ctx.createGain();
+      noise.buffer = noiseBuffer;
+      filter.type = 'lowpass'; filter.frequency.setValueAtTime(520, t0);
+      noiseGain.gain.setValueAtTime(0.0001, t0);
+      noiseGain.gain.exponentialRampToValueAtTime(0.075, t0 + 0.006);
+      noiseGain.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.12);
+      noise.connect(filter); filter.connect(noiseGain); noiseGain.connect(master);
+      noise.start(t0); noise.stop(t0 + 0.13);
+
       buzz([60, 40, 60]);
     } catch (_) {}
   }

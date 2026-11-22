@@ -12,7 +12,7 @@ body.auth-pending::after {
   padding: 24px;
   background: var(--auth-paper, #e9e6dc);
   color: var(--auth-muted, #77796e);
-  font: 10px var(--mono, 'DM Mono', monospace);
+  font: 10px var(--mono, 'IBM Plex Mono', monospace);
   letter-spacing: .14em;
 }
 
@@ -21,9 +21,9 @@ body.auth-pending::after {
 .auth-overlay.hidden { display: none !important; }
 .auth-card { width: min(100%, 560px); max-height: min(90vh, 820px); overflow-y: auto; background: var(--auth-paper); color: var(--auth-ink); border: 1px solid var(--line-strong, #9a9b8d); box-shadow: 12px 12px 0 rgba(0,0,0,.26); padding: clamp(22px, 4vw, 38px); }
 .auth-card-wide { width: min(100%, 760px); }
-.auth-kicker { display: flex; align-items: center; gap: 9px; color: var(--auth-muted); font: 10px var(--mono, 'DM Mono', monospace); letter-spacing: .12em; text-transform: uppercase; }
+.auth-kicker { display: flex; align-items: center; gap: 9px; color: var(--auth-muted); font: 10px var(--mono, 'IBM Plex Mono', monospace); letter-spacing: .12em; text-transform: uppercase; }
 .auth-kicker i { width: 8px; height: 8px; display: inline-block; background: var(--red, #e34b35); transform: rotate(45deg); }
-.auth-title { margin: 16px 0 10px; font: 700 clamp(34px, 7vw, 54px)/.98 var(--display, 'Space Grotesk', sans-serif); letter-spacing: -.07em; }
+.auth-title { margin: 16px 0 10px; font: 700 clamp(34px, 7vw, 54px)/.98 var(--display, 'Manrope', sans-serif); letter-spacing: -.07em; }
 .auth-intro { color: var(--auth-muted); font-size: 13px; line-height: 1.7; margin: 0 0 22px; max-width: 610px; }
 .auth-links { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 20px 0; }
 .auth-link-card { padding: 14px; border: 1px solid var(--line-strong, #9a9b8d); color: var(--auth-ink); text-decoration: none; display: flex; flex-direction: column; gap: 6px; transition: transform .16s ease, box-shadow .16s ease; }
@@ -40,7 +40,7 @@ body.auth-pending::after {
 .auth-switch button[aria-pressed="true"] { background: var(--auth-ink); color: var(--auth-paper); }
 .auth-field { display: grid; gap: 8px; margin: 14px 0; }
 .auth-field label { color: var(--auth-muted); font: 10px var(--mono, monospace); letter-spacing: .08em; }
-.auth-input { width: 100%; min-height: 49px; border: 1px solid var(--line-strong, #9a9b8d); border-radius: 0; background: var(--paper, #e9e6dc); color: var(--auth-ink); padding: 0 13px; font: 14px var(--display, 'Space Grotesk', sans-serif); outline: none; }
+.auth-input { width: 100%; min-height: 49px; border: 1px solid var(--line-strong, #9a9b8d); border-radius: 0; background: var(--paper, #e9e6dc); color: var(--auth-ink); padding: 0 13px; font: 14px var(--display, 'Manrope', sans-serif); outline: none; }
 .auth-input:focus { border-color: var(--auth-ink); box-shadow: 3px 3px 0 var(--auth-ink); }
 .auth-input::placeholder { color: var(--auth-muted); opacity: .8; }
 .auth-error, .auth-note, .auth-success { min-height: 20px; margin: 12px 0 0; font-size: 12px; line-height: 1.6; }
@@ -93,7 +93,7 @@ body.auth-pending::after {
   place-items: center;
   background: var(--ink, #181914);
   color: var(--paper, #e9e6dc);
-  font: 700 11px var(--display, 'Space Grotesk', sans-serif);
+  font: 700 11px var(--display, 'Manrope', sans-serif);
   text-transform: uppercase;
   pointer-events: none;
 }
@@ -119,12 +119,12 @@ body.auth-pending::after {
 }
 .room05-profile-kicker {
   color: var(--muted, #74766c);
-  font: 9px var(--mono, 'DM Mono', monospace);
+  font: 9px var(--mono, 'IBM Plex Mono', monospace);
   letter-spacing: .13em;
 }
 .room05-profile-username {
   margin-top: 8px;
-  font: 600 19px/1.2 var(--display, 'Space Grotesk', sans-serif);
+  font: 600 19px/1.2 var(--display, 'Manrope', sans-serif);
   overflow-wrap: anywhere;
 }
 .room05-id-badge {
@@ -137,11 +137,11 @@ body.auth-pending::after {
 }
 .room05-id-badge span {
   color: var(--muted, #74766c);
-  font: 8px var(--mono, 'DM Mono', monospace);
+  font: 8px var(--mono, 'IBM Plex Mono', monospace);
   letter-spacing: .1em;
 }
 .room05-id-badge strong {
-  font: 600 12px var(--mono, 'DM Mono', monospace);
+  font: 600 12px var(--mono, 'IBM Plex Mono', monospace);
   letter-spacing: .04em;
   overflow-wrap: anywhere;
 }
@@ -160,7 +160,7 @@ body.auth-pending::after {
   color: var(--ink, #181914);
   background: transparent;
   text-decoration: none;
-  font: 9px var(--mono, 'DM Mono', monospace);
+  font: 9px var(--mono, 'IBM Plex Mono', monospace);
   letter-spacing: .04em;
   transition: background-color .14s ease, color .14s ease;
 }
@@ -181,7 +181,7 @@ body.auth-pending::after {
   color: var(--paper, #e9e6dc);
   cursor: pointer;
   text-align: left;
-  font: 9px var(--mono, 'DM Mono', monospace);
+  font: 9px var(--mono, 'IBM Plex Mono', monospace);
   letter-spacing: .08em;
   transition: opacity .14s ease;
 }

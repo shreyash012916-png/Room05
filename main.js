@@ -841,6 +841,7 @@
   function showCall(code) {
     landing.classList.add('hidden');
     callScreen.classList.remove('hidden');
+    document.body.classList.add('in-call');
     $('active-room-code').textContent = code;
     $('footer-room-code').textContent = code;
     videoGrid.innerHTML = '';
@@ -893,7 +894,7 @@
       myId = joined.id;
       inRoom = true;
       setStatus('CONNECTED', 'ok');
-      startHeartbeat(); startStats(); acquireWakeLock(); document.body.classList.add('in-call');
+      startHeartbeat(); startStats(); acquireWakeLock();
       joined.peers.forEach((pr) => {
         const p = createPeer(pr.id, pr.name, true);
         if (pr.state && Object.keys(pr.state).length) p.state = pr.state;
@@ -918,6 +919,7 @@
       if (roomTabClaimed) releaseRoomTab();
       callScreen.classList.add('hidden');
       landing.classList.remove('hidden');
+      document.body.classList.remove('in-call');
       videoGrid.innerHTML = '';
       myId = '';
       setBusy(false);
@@ -1235,21 +1237,44 @@
     else if (k === 'escape') { $('settings-overlay').classList.add('hidden'); }
   });
 
-  // ---------- fullscreen (whole app) ----------
-  const fsRoot = document.documentElement;
+  // ---------- fullscreen (call room only) ----------
+  // Fullscreen the call screen, not the document: the landing header must not
+  // appear above the LIVE ROOM bar or create a doubled toolbar.
+  const fsRoot = callScreen;
   const fsSupported = !!(fsRoot.requestFullscreen || fsRoot.webkitRequestFullscreen);
-  function isFs() { return !!(document.fullscreenElement || document.webkitFullscreenElement); }
+  function isFs() {
+    return document.fullscreenElement === fsRoot || document.webkitFullscreenElement === fsRoot;
+  }
   async function toggleFullscreen() {
     try {
-      if (isFs()) { if (document.exitFullscreen) await document.exitFullscreen(); else document.webkitExitFullscreen(); }
-      else { if (fsRoot.requestFullscreen) await fsRoot.requestFullscreen({ navigationUI: 'hide' }); else fsRoot.webkitRequestFullscreen(); }
-    } catch (_) { toast('Fullscreen is not available here.'); }
+      const activeElement = document.fullscreenElement || document.webkitFullscreenElement;
+      if (activeElement) {
+        const exit = document.exitFullscreen || document.webkitExitFullscreen;
+        if (exit) await exit.call(document);
+      } else if (fsRoot.requestFullscreen) {
+        await fsRoot.requestFullscreen({ navigationUI: 'hide' });
+      } else if (fsRoot.webkitRequestFullscreen) {
+        fsRoot.webkitRequestFullscreen();
+      } else {
+        toast('Fullscreen is not available here.');
+      }
+    } catch (_) {
+      toast('Fullscreen is not available here.');
+    }
   }
   const fsBtn = $('toggle-fullscreen');
   if (fsBtn) {
-    if (!fsSupported) fsBtn.style.display = 'none'; else fsBtn.addEventListener('click', toggleFullscreen);
-    const sync = () => fsRoot.classList.toggle('is-fullscreen', isFs());
-    document.addEventListener('fullscreenchange', sync); document.addEventListener('webkitfullscreenchange', sync);
+    if (!fsSupported) fsBtn.style.display = 'none';
+    else fsBtn.addEventListener('click', toggleFullscreen);
+    const sync = () => {
+      const active = isFs();
+      fsRoot.classList.toggle('is-fullscreen', active);
+      fsBtn.title = active ? 'Exit fullscreen' : 'Fullscreen';
+      fsBtn.setAttribute('aria-label', active ? 'Exit fullscreen' : 'Toggle fullscreen');
+    };
+    document.addEventListener('fullscreenchange', sync);
+    document.addEventListener('webkitfullscreenchange', sync);
+    sync();
   }
 
   // ---------- party mode, airhorn, icebreakers, tile filters ----------

@@ -2,6 +2,13 @@
 
 ROOM/05 is a browser-based room for video, voice, chat, reactions and screen sharing. Calls use browser WebRTC connections between participants. The Node server serves the website and relays the small signaling messages needed to connect peers.
 
+## Latest interface refinements
+
+- The account avatar is placed directly in the landing and in-call toolbars. Its menu shows the username, permanent ROOM/05 ID, Terms & Conditions, Privacy Policy, and sign-out action. The sign-out action is not permanently displayed.
+- The in-call page hides the landing header and fullscreen targets only the call screen, preventing stacked/doubled headers.
+- On small screens, the call controls remain visible in a compact two-row dock while the video area scrolls independently.
+- Mobile tap highlighting is suppressed and toolbar/control feedback uses short, restrained transitions.
+
 ## What this package changes
 
 - The Render service is configured as **Free**. There is no paid Starter plan, paid persistent disk, or `DATA_DIR` setting in this package.

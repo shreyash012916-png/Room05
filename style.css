@@ -159,3 +159,137 @@ h1,h2,h3,p { margin-top:0; }
 @media (max-width:900px) { .hero-grid{grid-template-columns:1fr;gap:45px;padding:55px 0}.hero-copy h1{font-size:clamp(62px,14vw,105px)}.entry-card{max-width:620px}.call-body{padding:14px;gap:10px}.side-panel{width:270px;flex-basis:270px}.call-footer-left,.call-footer-right{display:none}.call-footer{justify-content:center}.control-dock{flex-wrap:wrap} }
 @media (max-width:650px) { .site-header{padding:0 5vw;min-height:62px}.header-center,.header-link{display:none}.landing{padding-left:5vw;padding-right:5vw}.landing-topline,.section-kicker{font-size:8px}.hero-grid{padding:50px 0}.hero-copy h1{font-size:clamp(58px,17vw,90px)}.hero-bottomline p{font-size:12px}.ticker-band{margin-left:-5vw;margin-right:-5vw}.ticker-track{justify-content:flex-start;animation:ticker 24s linear infinite}.how-grid{grid-template-columns:1fr;gap:25px}.how-item{padding-top:14px}.landing-footer{font-size:7px}.call-topbar{padding:0 10px;flex-wrap:wrap;min-height:60px}.room-meta{gap:7px;font-size:8px}.call-top-actions{gap:4px}.call-top-actions .connection-pill{display:none}.call-body{display:flex;flex-direction:column;overflow:auto}.video-grid{min-height:310px;grid-auto-rows:240px}.stage-bottomline{flex-wrap:wrap}.stage-bottomline>span:last-child{display:none}.quick-reactions{width:100%;justify-content:center}.side-panel{width:100%;flex:0 0 290px}.call-footer{padding:9px 7px}.control-dock{gap:4px}.control-button{min-width:42px;height:49px}.control-label{font-size:6px}.leave-button{min-width:57px;height:49px}.dock-divider{margin:0 2px}.room-code-label{display:none} }
 @keyframes ticker { to { transform:translateX(-35%); } }
+
+
+/* ROOM/05 responsive call viewport and touch polish. */
+button, a, [role="button"], input, select, textarea {
+  -webkit-tap-highlight-color: transparent;
+}
+button, a, [role="button"] { touch-action: manipulation; }
+button:focus:not(:focus-visible), a:focus:not(:focus-visible), [role="button"]:focus:not(:focus-visible) {
+  outline: none;
+}
+.square-action, .control-button, .leave-button, .button, .icon-text-button,
+.quick-reactions button, .theme-swatches button, .close-panel, .tile-actions button {
+  transition: color .15s ease, background-color .15s ease, border-color .15s ease,
+              opacity .15s ease, transform .15s ease, filter .15s ease;
+}
+
+body.in-call {
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+body.in-call > main { height: 100%; min-height: 0; }
+body.in-call .site-header { display: none !important; }
+body.in-call #call-screen {
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+body.in-call #call-screen .call-topbar,
+body.in-call #call-screen .call-footer { flex: 0 0 auto; }
+body.in-call #call-screen .call-body { min-height: 0; }
+
+/* The call screen itself is fullscreen. This avoids fullscreening the landing
+   header and rendering a second ROOM/05 bar above the LIVE ROOM bar. */
+#call-screen:fullscreen,
+#call-screen:-webkit-full-screen,
+#call-screen.is-fullscreen {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  max-width: none;
+  margin: 0;
+  overflow: hidden;
+  background: var(--paper);
+}
+
+@media (max-width: 650px) {
+  body.in-call #call-screen .call-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+  }
+  body.in-call #call-screen .call-footer {
+    padding: 8px 10px calc(8px + env(safe-area-inset-bottom));
+  }
+  body.in-call #call-screen .control-dock {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    align-items: stretch;
+    justify-content: stretch;
+    gap: 5px;
+    width: 100%;
+    max-width: 480px;
+  }
+  body.in-call #call-screen .dock-divider { display: none; }
+  body.in-call #call-screen .control-button,
+  body.in-call #call-screen .leave-button {
+    width: 100%;
+    min-width: 0;
+    height: 48px;
+    padding: 3px 2px;
+  }
+  body.in-call #call-screen .control-label { font-size: 7px; }
+  body.in-call #call-screen .call-top-actions { gap: 3px; }
+  body.in-call #call-screen .call-top-actions .square-action {
+    width: 32px;
+    min-width: 32px;
+    height: 32px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .square-action, .control-button, .leave-button, .button, .icon-text-button,
+  .quick-reactions button, .theme-swatches button, .close-panel, .tile-actions button {
+    transition: none !important;
+  }
+}
+
+/* Keep the existing fullscreen action visible and identifiable. */
+.fs-toggle::before {
+  content: '⛶';
+  display: block;
+  font-size: 20px;
+  line-height: 1;
+}
+
+@media (max-width: 650px) {
+  /* A single compact call toolbar: no flex-wrap gap or second header row. */
+  body.in-call #call-screen .call-topbar {
+    min-height: 52px;
+    flex-wrap: nowrap;
+    gap: 8px;
+    padding: 0 9px;
+  }
+  body.in-call #call-screen .brand-small,
+  body.in-call #call-screen .room-code-label,
+  body.in-call #call-screen .room-meta .meta-divider,
+  body.in-call #call-screen #copy-code {
+    display: none !important;
+  }
+  body.in-call #call-screen .room-meta {
+    flex: 1 1 auto;
+    min-width: 0;
+    gap: 6px;
+    white-space: nowrap;
+  }
+  body.in-call #call-screen .call-top-actions {
+    flex: 0 0 auto;
+    flex-wrap: nowrap;
+    white-space: nowrap;
+    gap: 2px;
+  }
+  body.in-call #call-screen .call-top-actions .square-action,
+  body.in-call #call-screen .call-top-actions .room05-profile-button {
+    width: 30px;
+    min-width: 30px;
+    height: 30px;
+  }
+}

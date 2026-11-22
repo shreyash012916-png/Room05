@@ -44,102 +44,64 @@
   .account-chip { top: 72px; right: 10px; padding: 7px 9px; }
 }
 
-/* Smooth touch feedback and compact controls integrated into the existing tool bar. */
-html { scroll-behavior: smooth; }
-*, *::before, *::after { -webkit-tap-highlight-color: transparent !important; }
-a, button, [role="button"], [tabindex]:not([tabindex="-1"]) { touch-action: manipulation; }
-:focus:not(:focus-visible) { outline: none; }
-
-/* display:contents lets these controls become normal siblings of the camera/tool icons. */
-.room05-top-controls { display: contents; }
-.room05-controls-fallback {
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  gap: 7px;
-  width: 100%;
-  padding: 7px 10px;
-  position: static;
-}
+/* Account controls live inside the real page toolbars (not floating overlays). */
 .room05-profile {
   position: relative;
   display: inline-flex;
-  align-items: center;
   flex: 0 0 auto;
-  vertical-align: middle;
-}
-.room05-toolbar-action {
-  width: 36px;
-  height: 36px;
-  min-width: 36px;
-  min-height: 36px;
-  display: inline-flex;
   align-items: center;
-  justify-content: center;
-  padding: 0;
-  margin: 0 3px;
-  border: 0;
-  border-radius: 50%;
-  background: transparent;
-  color: inherit;
-  cursor: pointer;
   vertical-align: middle;
-  -webkit-appearance: none;
-  appearance: none;
-  transition: opacity .14s ease, background-color .14s ease;
 }
-.room05-toolbar-action:hover,
-.room05-toolbar-action:focus,
-.room05-toolbar-action:focus-visible {
-  background: transparent;
-  color: inherit;
+.room05-profile[hidden] { display: none !important; }
+.room05-profile-button {
+  width: 35px;
+  min-width: 35px;
+  height: 35px;
+  padding: 3px;
+  border-radius: 50%;
 }
-.room05-toolbar-action:active { opacity: .68; }
-.room05-toolbar-action:focus-visible,
-.room05-profile-logout:focus-visible {
-  outline: 2px solid var(--ink, currentColor);
-  outline-offset: 3px;
+.room05-profile-button:hover,
+.room05-profile-button:focus,
+.room05-profile-button:focus-visible,
+.room05-profile-button.is-open {
+  background: var(--paper-2, #dedbcf);
+  border-color: var(--line-strong, #999b8c);
+  color: var(--ink, #181914);
 }
-.room05-toolbar-action svg { display: block; width: 20px; height: 20px; pointer-events: none; }
-.room05-profile-button[hidden] { display: none !important; }
 .room05-profile-avatar {
-  width: 30px;
-  height: 30px;
+  width: 27px;
+  height: 27px;
   border-radius: 50%;
   display: grid;
   place-items: center;
   background: var(--ink, #181914);
   color: var(--paper, #e9e6dc);
-  font: 700 12px var(--display, 'Space Grotesk', sans-serif);
+  font: 700 11px var(--display, 'Space Grotesk', sans-serif);
   text-transform: uppercase;
+  pointer-events: none;
 }
 .room05-profile-menu {
   position: absolute;
-  z-index: 7000;
-  top: calc(100% + 8px);
-  left: 0;
-  right: auto;
-  width: min(280px, calc(100vw - 24px));
-  padding: 17px;
-  border: 1px solid var(--line-strong, #9a9b8d);
+  z-index: 8500;
+  top: calc(100% + 9px);
+  right: 0;
+  left: auto;
+  width: min(278px, calc(100vw - 24px));
+  padding: 16px;
+  border: 1px solid var(--line-strong, #999b8c);
   background: var(--paper, #e9e6dc);
   color: var(--ink, #181914);
-  box-shadow: 4px 4px 0 var(--shadow-c, rgba(0,0,0,.14));
-  transform-origin: top left;
-  animation: room05-menu-in .14s ease-out both;
-}
-.room05-profile-menu.align-right {
-  left: auto;
-  right: 0;
+  box-shadow: 4px 4px 0 var(--shadow-c, rgba(20,22,15,.16));
   transform-origin: top right;
+  animation: room05-profile-in .14s ease-out both;
 }
 .room05-profile-menu[hidden] { display: none !important; }
-@keyframes room05-menu-in {
+@keyframes room05-profile-in {
   from { opacity: 0; transform: translateY(-3px); }
   to { opacity: 1; transform: translateY(0); }
 }
 .room05-profile-kicker {
-  color: var(--muted, #77796e);
+  color: var(--muted, #74766c);
   font: 9px var(--mono, 'DM Mono', monospace);
   letter-spacing: .13em;
 }
@@ -151,25 +113,51 @@ a, button, [role="button"], [tabindex]:not([tabindex="-1"]) { touch-action: mani
 .room05-id-badge {
   display: grid;
   gap: 6px;
-  margin-top: 14px;
-  padding: 11px 12px;
-  border: 1px solid var(--line-strong, #9a9b8d);
+  margin-top: 13px;
+  padding: 10px 11px;
+  border: 1px solid var(--line-strong, #999b8c);
   background: var(--paper-2, #dedbcf);
 }
 .room05-id-badge span {
-  color: var(--muted, #77796e);
+  color: var(--muted, #74766c);
   font: 8px var(--mono, 'DM Mono', monospace);
   letter-spacing: .1em;
 }
 .room05-id-badge strong {
   font: 600 12px var(--mono, 'DM Mono', monospace);
-  overflow-wrap: anywhere;
   letter-spacing: .04em;
+  overflow-wrap: anywhere;
 }
+.room05-profile-links {
+  display: grid;
+  margin-top: 12px;
+  border: 1px solid var(--line, #c8c6b9);
+}
+.room05-profile-link {
+  display: flex;
+  min-height: 39px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 0 10px;
+  color: var(--ink, #181914);
+  background: transparent;
+  text-decoration: none;
+  font: 9px var(--mono, 'DM Mono', monospace);
+  letter-spacing: .04em;
+  transition: background-color .14s ease, color .14s ease;
+}
+.room05-profile-link + .room05-profile-link { border-top: 1px solid var(--line, #c8c6b9); }
+.room05-profile-link:hover,
+.room05-profile-link:focus-visible {
+  color: var(--ink, #181914);
+  background: var(--paper-2, #dedbcf);
+}
+.room05-profile-link span { color: var(--auth-muted); }
 .room05-profile-logout {
   width: 100%;
   min-height: 40px;
-  margin-top: 13px;
+  margin-top: 12px;
   padding: 0 12px;
   border: 1px solid var(--ink, #181914);
   background: var(--ink, #181914);
@@ -180,20 +168,18 @@ a, button, [role="button"], [tabindex]:not([tabindex="-1"]) { touch-action: mani
   letter-spacing: .08em;
   transition: opacity .14s ease;
 }
-.room05-profile-logout:hover:not(:disabled) { background: var(--ink, #181914); color: var(--paper, #e9e6dc); }
+.room05-profile-logout:hover:not(:disabled) {
+  background: var(--ink, #181914);
+  color: var(--paper, #e9e6dc);
+}
 .room05-profile-logout:active { opacity: .72; }
 .room05-profile-logout:disabled { opacity: .55; cursor: wait; }
-
-/* The legacy always-visible chip stays hidden; logout is only inside the profile menu. */
 .account-chip { display: none !important; }
-
-@media (max-width: 600px) {
-  .room05-toolbar-action { width: 34px; height: 34px; min-width: 34px; min-height: 34px; margin-inline: 2px; }
-  .room05-profile-avatar { width: 29px; height: 29px; }
-  .room05-profile-menu { width: min(270px, calc(100vw - 20px)); }
+@media (max-width: 650px) {
+  .room05-profile-button { width: 32px; min-width: 32px; height: 32px; }
+  .room05-profile-avatar { width: 25px; height: 25px; }
 }
 @media (prefers-reduced-motion: reduce) {
-  html { scroll-behavior: auto; }
-  .room05-toolbar-action, .room05-profile-logout { transition: none; }
   .room05-profile-menu { animation: none; }
+  .room05-profile-logout, .room05-profile-link { transition: none; }
 }

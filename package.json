@@ -1,10 +1,17 @@
 {
   "name": "room05-p2p-video-rooms",
-  "version": "6.2.0",
+  "version": "6.3.0",
   "private": true,
-  "description": "ROOM/05 peer-to-peer WebRTC rooms with local username/password accounts and persistent consent records",
+  "description": "ROOM/05 peer-to-peer WebRTC rooms with PostgreSQL-backed username/password accounts",
   "main": "server.js",
-  "scripts": { "start": "node server.js" },
-  "dependencies": { "ws": "^8.18.0" },
-  "engines": { "node": ">=18" }
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "pg": "^8.16.3",
+    "ws": "^8.18.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
 }

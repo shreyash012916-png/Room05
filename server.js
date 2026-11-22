@@ -3,22 +3,21 @@
  * ROOM/05 — peer-to-peer video rooms.
  * The server serves the site, relays small WebRTC signaling messages, and
  * handles username/password accounts. Audio and video remain browser-to-browser.
- * Account records live in DATA_DIR; on Render this is the attached persistent disk.
+ * Account records and the session-signing secret live in PostgreSQL so they
+ * survive Render Free service restarts and its ephemeral local filesystem.
  */
 const http = require('node:http');
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const zlib = require('node:zlib');
+const { Pool } = require('pg');
 const { WebSocketServer } = require('ws');
 
 const PORT = Number(process.env.PORT || 3000);
 const requestedMax = Number(process.env.MAX_PEOPLE || 5);
 const MAX_PEOPLE = Number.isFinite(requestedMax) ? Math.min(5, Math.max(2, Math.floor(requestedMax))) : 5;
 const ROOT = __dirname;
-const DATA_DIR = process.env.DATA_DIR || (process.env.RENDER ? '/var/data' : path.join(ROOT, 'data'));
-const ACCOUNTS_FILE = path.join(DATA_DIR, 'room05-accounts.json');
-const SESSION_SECRET_FILE = path.join(DATA_DIR, 'room05-session-secret');
 const TERMS_VERSION = '1.0';
 const PRIVACY_VERSION = '1.1';
 const SESSION_MAX_AGE = 30 * 24 * 60 * 60;
@@ -30,10 +29,22 @@ const MIME = {
   '.svg': 'image/svg+xml'
 };
 
-let accountStore = { version: 1, users: [] };
+if (!process.env.DATABASE_URL) {
+  console.error('DATABASE_URL is missing. Add your Neon PostgreSQL connection string to the service environment.');
+}
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  max: 5,
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 10000,
+  keepAlive: true,
+  enableChannelBinding: true
+});
+pool.on('error', (error) => console.error('PostgreSQL pool error:', error.message));
+
 let sessionSecret = null;
-let writeQueue = Promise.resolve();
 const authAttempts = new Map();
+const USER_COLUMNS = 'user_id, username, username_key, password_salt, password_hash, created_at, terms_version, privacy_version, legal_accepted_at';
 
 function send(res, status, body, type = 'text/plain; charset=utf-8', extra = {}) {
   const data = Buffer.isBuffer(body) ? body : Buffer.from(String(body));
@@ -53,38 +64,48 @@ function json(res, status, value, extra = {}) {
   send(res, status, JSON.stringify(value), 'application/json; charset=utf-8', { 'Cache-Control': 'no-store', ...extra });
 }
 
-async function initialiseAccountStore() {
-  await fs.promises.mkdir(DATA_DIR, { recursive: true });
-  try {
-    const raw = await fs.promises.readFile(ACCOUNTS_FILE, 'utf8');
-    const parsed = JSON.parse(raw);
-    if (!parsed || parsed.version !== 1 || !Array.isArray(parsed.users)) throw new Error('Account store has an unsupported or invalid format.');
-    accountStore = parsed;
-  } catch (error) {
-    if (error.code !== 'ENOENT') throw error;
-    await fs.promises.writeFile(ACCOUNTS_FILE, JSON.stringify(accountStore, null, 2), { mode: 0o600 });
-  }
-  try {
-    sessionSecret = await fs.promises.readFile(SESSION_SECRET_FILE);
-    if (sessionSecret.length < 32) throw new Error('Session secret file is invalid.');
-  } catch (error) {
-    if (error.code !== 'ENOENT') throw error;
-    sessionSecret = crypto.randomBytes(48);
-    await fs.promises.writeFile(SESSION_SECRET_FILE, sessionSecret, { mode: 0o600, flag: 'wx' }).catch(async (writeError) => {
-      if (writeError.code !== 'EEXIST') throw writeError;
-      sessionSecret = await fs.promises.readFile(SESSION_SECRET_FILE);
-      if (sessionSecret.length < 32) throw new Error('Session secret file is invalid.');
-    });
-  }
-}
+async function initialiseDatabase() {
+  if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL is not set. Add a Neon PostgreSQL connection string before starting ROOM/05.');
 
-function persistAccountStore() {
-  writeQueue = writeQueue.catch(() => {}).then(async () => {
-    const temp = `${ACCOUNTS_FILE}.${process.pid}.tmp`;
-    await fs.promises.writeFile(temp, JSON.stringify(accountStore, null, 2), { mode: 0o600 });
-    await fs.promises.rename(temp, ACCOUNTS_FILE);
-  });
-  return writeQueue;
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS room05_users (
+      user_id VARCHAR(32) PRIMARY KEY,
+      username VARCHAR(24) NOT NULL,
+      username_key VARCHAR(24) NOT NULL UNIQUE,
+      password_salt CHAR(32) NOT NULL,
+      password_hash CHAR(128) NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL,
+      terms_version VARCHAR(20) NOT NULL,
+      privacy_version VARCHAR(20) NOT NULL,
+      legal_accepted_at TIMESTAMPTZ NOT NULL
+    )
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS room05_settings (
+      setting_key TEXT PRIMARY KEY,
+      setting_value TEXT NOT NULL
+    )
+  `);
+
+  // Keep the signing key in the same durable database as accounts. This avoids
+  // losing every active session when a Render Free instance restarts.
+  const candidateSecret = crypto.randomBytes(48).toString('hex');
+  await pool.query(
+    `INSERT INTO room05_settings (setting_key, setting_value)
+     VALUES ('session_secret', $1)
+     ON CONFLICT (setting_key) DO NOTHING`,
+    [candidateSecret]
+  );
+  const secretResult = await pool.query(
+    `SELECT setting_value FROM room05_settings WHERE setting_key = 'session_secret'`
+  );
+  if (!secretResult.rows[0] || typeof secretResult.rows[0].setting_value !== 'string') {
+    throw new Error('Could not initialise the ROOM/05 session-signing secret.');
+  }
+  sessionSecret = Buffer.from(secretResult.rows[0].setting_value, 'hex');
+  if (sessionSecret.length < 32) throw new Error('The database session-signing secret is invalid.');
+
+  await pool.query('SELECT 1');
 }
 
 function clean(v, n) {
@@ -158,7 +179,7 @@ function signSession(userId) {
   return `${payload}.${signature}`;
 }
 
-function getSessionUser(req) {
+function verifySessionToken(req) {
   const token = cookieValue(req, 'room05_session');
   const parts = token.split('.');
   if (parts.length !== 2 || !sessionSecret) return null;
@@ -169,9 +190,70 @@ function getSessionUser(req) {
   if (suppliedBuffer.length !== expectedBuffer.length || !crypto.timingSafeEqual(suppliedBuffer, expectedBuffer)) return null;
   try {
     const decoded = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
-    if (!decoded.uid || !Number.isInteger(decoded.exp) || decoded.exp <= Math.floor(Date.now() / 1000)) return null;
-    return accountStore.users.find((user) => user.userId === decoded.uid) || null;
+    if (typeof decoded.uid !== 'string' || !/^R05-[A-F0-9]{20}$/.test(decoded.uid) || !Number.isInteger(decoded.exp) || decoded.exp <= Math.floor(Date.now() / 1000)) return null;
+    return decoded;
   } catch (_) { return null; }
+}
+
+async function getSessionUser(req) {
+  const session = verifySessionToken(req);
+  if (!session) return null;
+  const result = await pool.query(`SELECT ${USER_COLUMNS} FROM room05_users WHERE user_id = $1`, [session.uid]);
+  return result.rows[0] ? toUser(result.rows[0]) : null;
+}
+
+function toUser(row) {
+  return {
+    username: row.username,
+    usernameKey: row.username_key,
+    userId: row.user_id,
+    passwordSalt: row.password_salt,
+    passwordHash: row.password_hash,
+    createdAt: new Date(row.created_at).toISOString(),
+    termsVersion: row.terms_version,
+    privacyVersion: row.privacy_version,
+    legalAcceptedAt: new Date(row.legal_accepted_at).toISOString()
+  };
+}
+
+async function findUserByUsernameKey(usernameKey) {
+  const result = await pool.query(`SELECT ${USER_COLUMNS} FROM room05_users WHERE username_key = $1`, [usernameKey]);
+  return result.rows[0] ? toUser(result.rows[0]) : null;
+}
+
+async function updateLegalAcceptance(userId) {
+  const acceptedAt = new Date();
+  const result = await pool.query(
+    `UPDATE room05_users
+     SET terms_version = $2, privacy_version = $3, legal_accepted_at = $4
+     WHERE user_id = $1
+     RETURNING ${USER_COLUMNS}`,
+    [userId, TERMS_VERSION, PRIVACY_VERSION, acceptedAt]
+  );
+  return result.rows[0] ? toUser(result.rows[0]) : null;
+}
+
+async function insertNewUser({ username, usernameKey, salt, passwordHash }) {
+  const createdAt = new Date();
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const userId = `R05-${crypto.randomBytes(10).toString('hex').toUpperCase()}`;
+    try {
+      const result = await pool.query(
+        `INSERT INTO room05_users
+          (user_id, username, username_key, password_salt, password_hash, created_at, terms_version, privacy_version, legal_accepted_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+         RETURNING ${USER_COLUMNS}`,
+        [userId, username, usernameKey, salt.toString('hex'), passwordHash, createdAt, TERMS_VERSION, PRIVACY_VERSION, createdAt]
+      );
+      return toUser(result.rows[0]);
+    } catch (error) {
+      if (error.code !== '23505') throw error;
+      // A duplicate username is a normal user-facing conflict; a rare random
+      // ID collision simply retries with a fresh ID.
+      if (await findUserByUsernameKey(usernameKey)) return null;
+    }
+  }
+  throw new Error('Could not allocate a unique account ID. Please try again.');
 }
 
 function sessionCookie(req, value, maxAge = SESSION_MAX_AGE) {
@@ -186,7 +268,7 @@ function publicUser(user) {
 
 async function handleApi(req, res, pathname) {
   if (pathname === '/api/me' && req.method === 'GET') {
-    const user = getSessionUser(req);
+    const user = await getSessionUser(req);
     return json(res, 200, { ok: true, user: user ? publicUser(user) : null });
   }
 
@@ -204,13 +286,10 @@ async function handleApi(req, res, pathname) {
   const body = parsedBody && typeof parsedBody === 'object' && !Array.isArray(parsedBody) ? parsedBody : {};
 
   if (pathname === '/api/legal/accept') {
-    const user = getSessionUser(req);
+    const user = await getSessionUser(req);
     if (!user) return json(res, 401, { error: 'Please sign in first.' });
     if (body.termsVersion !== TERMS_VERSION || body.privacyVersion !== PRIVACY_VERSION) return json(res, 400, { error: 'The legal policy version is not current. Refresh the page and try again.' });
-    user.termsVersion = TERMS_VERSION;
-    user.privacyVersion = PRIVACY_VERSION;
-    user.legalAcceptedAt = new Date().toISOString();
-    await persistAccountStore();
+    await updateLegalAcceptance(user.userId);
     return json(res, 200, { ok: true });
   }
 
@@ -226,32 +305,21 @@ async function handleApi(req, res, pathname) {
   }
 
   if (pathname === '/api/register') {
-    if (accountStore.users.some((user) => user.usernameKey === usernameKey)) return json(res, 409, { error: 'That username is already taken. Try another one.' });
+    if (await findUserByUsernameKey(usernameKey)) return json(res, 409, { error: 'That username is already taken. Try another one.' });
     const salt = crypto.randomBytes(16);
     const passwordHash = crypto.scryptSync(password, salt, 64).toString('hex');
-    const user = {
-      username,
-      usernameKey,
-      userId: '',
-      passwordSalt: salt.toString('hex'),
-      passwordHash,
-      createdAt: new Date().toISOString(),
-      termsVersion: TERMS_VERSION,
-      privacyVersion: PRIVACY_VERSION,
-      legalAcceptedAt: new Date().toISOString()
-    };
-    do { user.userId = `R05-${crypto.randomBytes(10).toString('hex').toUpperCase()}`; } while (accountStore.users.some((entry) => entry.userId === user.userId));
-    accountStore.users.push(user);
-    try { await persistAccountStore(); }
-    catch (error) {
-      accountStore.users = accountStore.users.filter((entry) => entry.userId !== user.userId);
-      console.error('Account save failed:', error);
-      return json(res, 500, { error: 'The account could not be saved. Check the server storage and try again.' });
+    let user;
+    try {
+      user = await insertNewUser({ username, usernameKey, salt, passwordHash });
+    } catch (error) {
+      console.error('Account insert failed:', error);
+      return json(res, 500, { error: 'The account could not be saved. Check the database connection and try again.' });
     }
+    if (!user) return json(res, 409, { error: 'That username is already taken. Try another one.' });
     return json(res, 201, { ok: true, created: true, user: publicUser(user) }, { 'Set-Cookie': sessionCookie(req, signSession(user.userId)) });
   }
 
-  const user = accountStore.users.find((entry) => entry.usernameKey === usernameKey);
+  const user = await findUserByUsernameKey(usernameKey);
   // Use a dummy hash on unknown usernames to reduce obvious timing differences.
   const salt = user ? Buffer.from(user.passwordSalt, 'hex') : Buffer.alloc(16, 0x5a);
   const expectedHash = user ? Buffer.from(user.passwordHash, 'hex') : crypto.scryptSync('ROOM05-invalid-password', salt, 64);
@@ -259,11 +327,9 @@ async function handleApi(req, res, pathname) {
   const passwordMatches = candidateHash.length === expectedHash.length && crypto.timingSafeEqual(candidateHash, expectedHash);
   if (!user || !passwordMatches) return json(res, 401, { error: 'Username or password is incorrect.' });
 
-  user.termsVersion = TERMS_VERSION;
-  user.privacyVersion = PRIVACY_VERSION;
-  user.legalAcceptedAt = new Date().toISOString();
-  await persistAccountStore();
-  return json(res, 200, { ok: true, created: false, user: publicUser(user) }, { 'Set-Cookie': sessionCookie(req, signSession(user.userId)) });
+  const updatedUser = await updateLegalAcceptance(user.userId);
+  if (!updatedUser) return json(res, 401, { error: 'Please sign in again.' });
+  return json(res, 200, { ok: true, created: false, user: publicUser(updatedUser) }, { 'Set-Cookie': sessionCookie(req, signSession(updatedUser.userId)) });
 }
 
 // Pre-compress the static website once at startup.
@@ -284,7 +350,10 @@ const server = http.createServer((req, res) => {
 
     if (pathname.startsWith('/api/')) return handleApi(req, res, pathname);
     if (req.method !== 'GET' && req.method !== 'HEAD') return send(res, 405, 'Method not allowed', 'text/plain; charset=utf-8', { Allow: 'GET, HEAD' });
-    if (pathname === '/health') return send(res, 200, JSON.stringify({ ok: true, app: 'ROOM/05', mode: 'p2p-webrtc', rooms: rooms.size, maxPeople: MAX_PEOPLE, accounts: accountStore.users.length }), 'application/json; charset=utf-8');
+    if (pathname === '/health') {
+      await pool.query('SELECT 1');
+      return send(res, 200, JSON.stringify({ ok: true, app: 'ROOM/05', mode: 'p2p-webrtc', rooms: rooms.size, maxPeople: MAX_PEOPLE, database: 'connected' }), 'application/json; charset=utf-8');
+    }
     if (pathname === '/config') return send(res, 200, JSON.stringify({ iceServers: iceServers(), maxPeople: MAX_PEOPLE }), 'application/json; charset=utf-8');
 
     const name = pathname === '/' ? 'index.html' : pathname.replace(/^\//, '');
@@ -317,7 +386,9 @@ const wss = new WebSocketServer({ noServer: true, maxPayload: 64 * 1024, perMess
 server.on('upgrade', (req, socket, head) => {
   let url;
   try { url = new URL(req.url, 'http://x'); } catch (_) { return socket.destroy(); }
-  if (url.pathname !== '/ws' || !getSessionUser(req) || !isSameOrigin(req)) return socket.destroy();
+  // The signed session token is verified locally; account credentials never
+  // enter WebSocket messages, and the signing secret is durable in PostgreSQL.
+  if (url.pathname !== '/ws' || !verifySessionToken(req) || !isSameOrigin(req)) return socket.destroy();
   wss.handleUpgrade(req, socket, head, (ws) => wss.emit('connection', ws, req));
 });
 
@@ -414,7 +485,10 @@ setInterval(() => {
 server.keepAliveTimeout = 65000;
 const shutdown = () => {
   wss.clients.forEach((client) => { try { client.close(1001); } catch (_) {} });
-  server.close(() => process.exit(0));
+  server.close(() => {
+    pool.end().catch((error) => console.error('Database pool shutdown error:', error.message));
+    process.exit(0);
+  });
   setTimeout(() => process.exit(0), 3000);
 };
 process.on('SIGTERM', shutdown);
@@ -422,9 +496,10 @@ process.on('SIGINT', shutdown);
 process.on('uncaughtException', (error) => console.error('uncaught', error));
 process.on('unhandledRejection', (error) => console.error('unhandled', error));
 
-initialiseAccountStore().then(() => {
-  server.listen(PORT, '0.0.0.0', () => console.log(`ROOM/05 listening on ${PORT}; max ${MAX_PEOPLE} per room; ${accountStore.users.length} account(s) loaded; account data: ${DATA_DIR}`));
+initialiseDatabase().then(() => {
+  server.listen(PORT, '0.0.0.0', () => console.log(`ROOM/05 listening on ${PORT}; max ${MAX_PEOPLE} per room; PostgreSQL accounts connected.`));
 }).catch((error) => {
-  console.error(`ROOM/05 could not initialise account storage at ${DATA_DIR}:`, error);
+  console.error('ROOM/05 could not initialise PostgreSQL:', error.message);
+  pool.end().catch(() => {});
   process.exit(1);
 });

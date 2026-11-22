@@ -1276,151 +1276,51 @@ body.theater-immersive-active { overflow:hidden !important; }
   #call-screen.controls-hidden > .call-footer { transition: none !important; }
 }
 
-/* Each theme has transparent, locally hosted PNG artwork. It sits behind
-   interface content, never intercepts input, and animates within each section. */
+/* Lightweight theme motifs: restrained vector details instead of large decorative PNGs.
+   They stay behind content, avoid text areas, and use no external requests. */
 .theme-scene::after {
-  content: "";
-  position: absolute;
-  z-index: -1;
-  inset: 0;
-  pointer-events: none;
+  content: ""; position: absolute; z-index: -1; inset: 0; pointer-events: none;
+  background-image: var(--theme-motif, none), var(--theme-motif, none), var(--theme-motif, none), var(--theme-motif, none);
   background-repeat: no-repeat;
-  background-position: 94% 8%;
-  background-size: clamp(150px, 22vw, 300px) auto;
-  background-position: 92% 58%;
-  opacity: .19;
-  mix-blend-mode: screen;
-  filter: saturate(.94) contrast(1.04);
-  animation: theme-art-drift 34s ease-in-out infinite alternate;
+  background-size: 54px auto, 42px auto, 38px auto, 48px auto;
+  background-position: 2.5% 15%, 96% 17%, 5% 83%, 94% 84%;
+  opacity: .105; mix-blend-mode: screen;
+  animation: theme-motif-drift 54s ease-in-out infinite alternate;
 }
-@keyframes theme-art-drift {
-  from { background-position: 94% 54%; }
-  to { background-position: 86% 66%; }
+@keyframes theme-motif-drift {
+  from { background-position: 2.5% 15%, 96% 17%, 5% 83%, 94% 84%; }
+  to { background-position: 4% 20%, 93% 22%, 7% 78%, 91% 80%; }
 }
-/* Refined theme artwork: cinematic photo/CG assets replace flat sticker icons.
-   The art stays softly blended at the edges of each section and never covers controls. */
-:root[data-theme="cream"] .theme-scene::after {
-  background-image: url('/theme-cream-cup.png');
-  background-size: clamp(155px, 21vw, 275px) auto;
-  background-position: 93% 62%;
-  opacity: .15;
-  animation-duration: 46s;
-}
-:root[data-theme="midnight"] .theme-scene::after {
-  background-image: url('/theme-midnight-moon.png');
-  background-size: clamp(180px, 25vw, 320px) auto;
-  background-position: 92% 60%;
-  opacity: .22;
-  animation-duration: 52s;
-}
-:root[data-theme="cyber"] .theme-scene::after {
-  background-image: url('/theme-cyber-cube.png');
-  background-size: clamp(180px, 26vw, 330px) auto;
-  background-position: 94% 52%;
-  opacity: .22;
-  animation-duration: 26s;
-}
-:root[data-theme="terminal"] .theme-scene::after {
-  background-image: url('/theme-terminal-monitor.png');
-  background-size: clamp(160px, 22vw, 285px) auto;
-  background-position: 92% 52%;
-  opacity: .22;
-  animation-duration: 38s;
-}
-:root[data-theme="vapor"] .theme-scene::after {
-  background-image: url('/theme-vapor-sun.png');
-  background-size: clamp(170px, 24vw, 310px) auto;
-  background-position: 94% 56%;
-  opacity: .23;
-  animation-duration: 32s;
-}
-:root[data-theme="aurora"] .theme-scene::after {
-  background-image: url('/theme-aurora-ribbon.png');
-  background-size: clamp(200px, 29vw, 365px) auto;
-  background-position: 94% 55%;
-  opacity: .22;
-  animation-duration: 48s;
-}
-:root[data-theme="grape"] .theme-scene::after {
-  background-image: url('/theme-grape-cluster.png');
-  background-size: clamp(150px, 20vw, 260px) auto;
-  background-position: 94% 54%;
-  opacity: .23;
-  animation-duration: 42s;
-}
-:root[data-theme="sunset"] .theme-scene::after {
-  background-image: url('/theme-sunset-sun.png');
-  background-size: clamp(185px, 27vw, 350px) auto;
-  background-position: 92% 58%;
-  opacity: .22;
-  animation-duration: 40s;
-}
-:root[data-theme="bubblegum"] .theme-scene::after {
-  background-image: url('/theme-bubblegum-bubbles.png');
-  background-size: clamp(155px, 22vw, 285px) auto;
-  background-position: 92% 56%;
-  opacity: .20;
-  animation-duration: 28s;
-}
-:root[data-theme="matcha"] .theme-scene::after {
-  background-image: url('/theme-matcha-leaf.png');
-  background-size: clamp(165px, 24vw, 305px) auto;
-  background-position: 93% 58%;
-  opacity: .19;
-  animation-duration: 44s;
-}
-:root[data-theme="gameboy"] .theme-scene::after {
-  background-image: url('/theme-gameboy-handheld.png');
-  background-size: clamp(140px, 20vw, 255px) auto;
-  background-position: 93% 56%;
-  opacity: .20;
-  animation-duration: 36s;
-}
-:root[data-theme="theater"] .theme-scene::after {
-  background-image: url('/theme-theater-reel.png');
-  background-size: clamp(190px, 27vw, 350px) auto;
-  background-position: 92% 58%;
-  opacity: .22;
-  animation-duration: 42s;
-}
-:root[data-theme="arcade"] .theme-scene::after {
-  background-image: url('/theme-arcade-cabinet.png');
-  background-size: clamp(175px, 25vw, 320px) auto;
-  background-position: 93% 62%;
-  opacity: .28;
-  animation-duration: 30s;
-}
-:root[data-theme="ocean"] .theme-scene::after {
-  background-image: url('/theme-ocean-fish.png');
-  background-size: clamp(185px, 27vw, 350px) auto;
-  background-position: 92% 56%;
-  opacity: .25;
-  animation-duration: 46s;
-}
+:root[data-theme="cream"] { --theme-motif: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMjAgODAiPjxkZWZzPjxsaW5lYXJHcmFkaWVudCBpZD0iZyIgeDI9IjAiIHkyPSIxIj48c3RvcCBzdG9wLWNvbG9yPSIjZjVkZGJmIi8+PHN0b3Agb2Zmc2V0PSIxIiBzdG9wLWNvbG9yPSIjOWI3MjU3Ii8+PC9saW5lYXJHcmFkaWVudD48L2RlZnM+PHBhdGggZD0iTTIyIDI2aDU0djIzYzAgMTItOCAyMC0yMCAyMEg0MmMtMTIgMC0yMC04LTIwLTIweiIgZmlsbD0idXJsKCNnKSIvPjxwYXRoIGQ9Ik03NiAzMmg4YzE3IDAgMTcgMjMgMCAyM2gtOCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjYzk5Yjc4IiBzdHJva2Utd2lkdGg9IjciLz48cGF0aCBkPSJNMzIgMTdjLTctNyA0LTkgMC0xNk01MSAxN2MtNy03IDQtOSAwLTE2TTY4IDE3Yy03LTcgNC05IDAtMTYiIGZpbGw9Im5vbmUiIHN0cm9rZT0iI2U4YzdhOCIgc3Ryb2tlLXdpZHRoPSIzIiBzdHJva2UtbGluZWNhcD0icm91bmQiIG9wYWNpdHk9Ii43Ii8+PGVsbGlwc2UgY3g9IjQ5IiBjeT0iMjciIHJ4PSIyNyIgcnk9IjUiIGZpbGw9IiNmZmYxZGMiIG9wYWNpdHk9Ii40NSIvPjwvc3ZnPg=="); }
+:root[data-theme="midnight"] { --theme-motif: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMjAgODAiPjxkZWZzPjxsaW5lYXJHcmFkaWVudCBpZD0ibSIgeDI9IjEiIHkyPSIxIj48c3RvcCBzdG9wLWNvbG9yPSIjZWVmNGZmIi8+PHN0b3Agb2Zmc2V0PSIxIiBzdG9wLWNvbG9yPSIjOTFhOGNkIi8+PC9saW5lYXJHcmFkaWVudD48L2RlZnM+PHBhdGggZD0iTTY1IDhhMzEgMzEgMCAxIDAgMzcgNDVBMzQgMzQgMCAwIDEgNjUgOHoiIGZpbGw9InVybCgjbSkiLz48ZyBmaWxsPSIjZGNlN2ZmIj48cGF0aCBkPSJNMjAgMTJsMyA4IDggMy04IDMtMyA4LTMtOC04LTMgOC0zeiIvPjxwYXRoIGQ9Ik05OCA4bDIgNSA1IDItNSAyLTIgNS0yLTUtNS0yIDUtMnoiLz48Y2lyY2xlIGN4PSIyNCIgY3k9IjYwIiByPSIyLjUiLz48Y2lyY2xlIGN4PSI4NCIgY3k9IjY5IiByPSIyIi8+PC9nPjwvc3ZnPg=="); }
+:root[data-theme="cyber"] { --theme-motif: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMjAgODAiPjxkZWZzPjxsaW5lYXJHcmFkaWVudCBpZD0iYyIgeDI9IjEiIHkyPSIxIj48c3RvcCBzdG9wLWNvbG9yPSIjNDVlYWZmIi8+PHN0b3Agb2Zmc2V0PSIuNTIiIHN0b3AtY29sb3I9IiM2YjYyZmYiLz48c3RvcCBvZmZzZXQ9IjEiIHN0b3AtY29sb3I9IiNmZjRiYTgiLz48L2xpbmVhckdyYWRpZW50PjwvZGVmcz48cGF0aCBkPSJNNjAgNiAxMDAgMjd2MjlMNjAgNzYgMjAgNTZWMjd6IiBmaWxsPSIjMTExYTM1IiBzdHJva2U9InVybCgjYykiIHN0cm9rZS13aWR0aD0iNSIvPjxwYXRoIGQ9Im02MCAxNCAzMSAxNnYyMUw2MCA2NyAyOSA1MVYzMHoiIGZpbGw9IiMxNjI3NDgiLz48cGF0aCBkPSJtNjAgMTQgMzEgMTYtMzEgMTctMzEtMTd6IiBmaWxsPSJ1cmwoI2MpIiBvcGFjaXR5PSIuNjgiLz48cGF0aCBkPSJNNjAgNDd2MjBNMjkgMzB2MjFsMzEgMTYgMzEtMTZWMzAiIGZpbGw9Im5vbmUiIHN0cm9rZT0iIzlmZmFmZiIgc3Ryb2tlLXdpZHRoPSIyIiBvcGFjaXR5PSIuOCIvPjxjaXJjbGUgY3g9IjYwIiBjeT0iMzkiIHI9IjUiIGZpbGw9IiNmZmYiIG9wYWNpdHk9Ii44Ii8+PC9zdmc+"); }
+:root[data-theme="terminal"] { --theme-motif: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMjAgODAiPjxkZWZzPjxsaW5lYXJHcmFkaWVudCBpZD0idCIgeDI9IjAiIHkyPSIxIj48c3RvcCBzdG9wLWNvbG9yPSIjMTgzZjM1Ii8+PHN0b3Agb2Zmc2V0PSIxIiBzdG9wLWNvbG9yPSIjMDcxYzE5Ii8+PC9saW5lYXJHcmFkaWVudD48L2RlZnM+PHJlY3QgeD0iMTIiIHk9IjEwIiB3aWR0aD0iOTYiIGhlaWdodD0iNTgiIHJ4PSI5IiBmaWxsPSIjMDcxMzEwIiBzdHJva2U9IiM0YWM1OGEiIHN0cm9rZS13aWR0aD0iNCIvPjxyZWN0IHg9IjE5IiB5PSIxNyIgd2lkdGg9IjgyIiBoZWlnaHQ9IjQzIiByeD0iNCIgZmlsbD0idXJsKCN0KSIvPjxnIGZpbGw9IiM2N2U2YTAiPjxyZWN0IHg9IjI3IiB5PSIyNSIgd2lkdGg9IjUiIGhlaWdodD0iNSIvPjxyZWN0IHg9IjM3IiB5PSIyNSIgd2lkdGg9IjMxIiBoZWlnaHQ9IjUiIHJ4PSIyIi8+PHJlY3QgeD0iMjciIHk9IjM3IiB3aWR0aD0iNSIgaGVpZ2h0PSI1Ii8+PHJlY3QgeD0iMzciIHk9IjM3IiB3aWR0aD0iNDkiIGhlaWdodD0iNSIgcng9IjIiLz48cmVjdCB4PSIyNyIgeT0iNDkiIHdpZHRoPSI1IiBoZWlnaHQ9IjUiLz48cmVjdCB4PSIzNyIgeT0iNDkiIHdpZHRoPSIyMyIgaGVpZ2h0PSI1IiByeD0iMiIvPjwvZz48cGF0aCBkPSJNNTEgNjhoMTgiIHN0cm9rZT0iIzZhOWI4NCIgc3Ryb2tlLXdpZHRoPSI1IiBzdHJva2UtbGluZWNhcD0icm91bmQiLz48L3N2Zz4="); }
+:root[data-theme="vapor"] { --theme-motif: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMjAgODAiPjxkZWZzPjxsaW5lYXJHcmFkaWVudCBpZD0idiIgeDI9IjAiIHkyPSIxIj48c3RvcCBzdG9wLWNvbG9yPSIjZmY4ZGNjIi8+PHN0b3Agb2Zmc2V0PSIxIiBzdG9wLWNvbG9yPSIjZmZiMDVmIi8+PC9saW5lYXJHcmFkaWVudD48L2RlZnM+PGNpcmNsZSBjeD0iNjAiIGN5PSIzNSIgcj0iMjkiIGZpbGw9InVybCgjdikiLz48cGF0aCBkPSJNMzEgMzNoNThNMzQgNDJoNTJNNDAgNTFoNDBNNDkgNjBoMjIiIHN0cm9rZT0iIzM4MjM0ZiIgc3Ryb2tlLXdpZHRoPSI0Ii8+PHBhdGggZD0iTTE4IDc1IDM4IDUxTTEwMiA3NSA4MiA1MSIgc3Ryb2tlPSIjNTVkNmVjIiBzdHJva2Utd2lkdGg9IjMiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPjwvc3ZnPg=="); }
+:root[data-theme="aurora"] { --theme-motif: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMjAgODAiPjxkZWZzPjxsaW5lYXJHcmFkaWVudCBpZD0iYSIgeDI9IjEiIHkyPSIxIj48c3RvcCBzdG9wLWNvbG9yPSIjNTVmNGM1IiBzdG9wLW9wYWNpdHk9Ii4xNSIvPjxzdG9wIG9mZnNldD0iLjQ1IiBzdG9wLWNvbG9yPSIjNjNkYmQyIiBzdG9wLW9wYWNpdHk9Ii45NSIvPjxzdG9wIG9mZnNldD0iMSIgc3RvcC1jb2xvcj0iIzhjOWJmZiIgc3RvcC1vcGFjaXR5PSIuMjUiLz48L2xpbmVhckdyYWRpZW50PjwvZGVmcz48cGF0aCBkPSJNNSA2MUMyMSA1IDM5IDcgNTQgNDNzMjYgMjggNjEtMjB2NDRINXoiIGZpbGw9InVybCgjYSkiLz48cGF0aCBkPSJNNCA2OEMyNSAyOCA0MiAyNyA1NyA1M3MzMyAxNCA1OS0xMSIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjYjhmZmYwIiBzdHJva2Utd2lkdGg9IjMiIG9wYWNpdHk9Ii42NSIvPjxjaXJjbGUgY3g9IjIwIiBjeT0iMTYiIHI9IjIiIGZpbGw9IiNlNGZmZjkiLz48Y2lyY2xlIGN4PSI5MyIgY3k9IjEzIiByPSIyIiBmaWxsPSIjZTRmZmY5Ii8+PC9zdmc+"); }
+:root[data-theme="grape"] { --theme-motif: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMjAgODAiPjxkZWZzPjxyYWRpYWxHcmFkaWVudCBpZD0iZyI+PHN0b3Agc3RvcC1jb2xvcj0iI2U0YzFmZiIvPjxzdG9wIG9mZnNldD0iMSIgc3RvcC1jb2xvcj0iIzc5NDZjOSIvPjwvcmFkaWFsR3JhZGllbnQ+PC9kZWZzPjxwYXRoIGQ9Ik01NyAxNGMxMy0xMyAyOS0xMCAzOS0yLTEyIDEyLTI1IDE1LTM5IDJ6IiBmaWxsPSIjNzVhNDViIi8+PHBhdGggZD0iTTYwIDE3Yy03IDktMTAgMTMtMTAgMTciIHN0cm9rZT0iIzZmOWQ1NiIgc3Ryb2tlLXdpZHRoPSI0IiBmaWxsPSJub25lIi8+PGcgZmlsbD0idXJsKCNnKSI+PGNpcmNsZSBjeD0iNDgiIGN5PSIzMiIgcj0iMTAiLz48Y2lyY2xlIGN4PSI2OSIgY3k9IjMyIiByPSIxMCIvPjxjaXJjbGUgY3g9IjM2IiBjeT0iNDgiIHI9IjEwIi8+PGNpcmNsZSBjeD0iNTgiIGN5PSI0OSIgcj0iMTAiLz48Y2lyY2xlIGN4PSI4MCIgY3k9IjQ5IiByPSIxMCIvPjxjaXJjbGUgY3g9IjQ3IiBjeT0iNjUiIHI9IjkiLz48Y2lyY2xlIGN4PSI2OSIgY3k9IjY1IiByPSI5Ii8+PC9nPjxnIGZpbGw9IiNmZmYiIG9wYWNpdHk9Ii40Ij48Y2lyY2xlIGN4PSI0NSIgY3k9IjI4IiByPSIyLjUiLz48Y2lyY2xlIGN4PSI2NiIgY3k9IjI4IiByPSIyLjUiLz48Y2lyY2xlIGN4PSIzMyIgY3k9IjQ0IiByPSIyLjUiLz48L2c+PC9zdmc+"); }
+:root[data-theme="sunset"] { --theme-motif: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMjAgODAiPjxkZWZzPjxsaW5lYXJHcmFkaWVudCBpZD0icyIgeDI9IjAiIHkyPSIxIj48c3RvcCBzdG9wLWNvbG9yPSIjZmZkMTdhIi8+PHN0b3Agb2Zmc2V0PSIxIiBzdG9wLWNvbG9yPSIjZmY2ZDcyIi8+PC9saW5lYXJHcmFkaWVudD48L2RlZnM+PGNpcmNsZSBjeD0iNjAiIGN5PSIzNyIgcj0iMjciIGZpbGw9InVybCgjcykiLz48cGF0aCBkPSJNMjIgNDFoNzZNMjggNDloNjRNMzYgNTdoNDgiIHN0cm9rZT0iIzMwMjMzZSIgc3Ryb2tlLXdpZHRoPSI0Ii8+PHBhdGggZD0iTTggNzNxMjAtMTEgNDAgMHQ0MCAwdDI0IDAiIGZpbGw9Im5vbmUiIHN0cm9rZT0iI2ZmYjM2ZiIgc3Ryb2tlLXdpZHRoPSI0IiBzdHJva2UtbGluZWNhcD0icm91bmQiLz48L3N2Zz4="); }
+:root[data-theme="bubblegum"] { --theme-motif: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMjAgODAiPjxkZWZzPjxyYWRpYWxHcmFkaWVudCBpZD0iYiIgY3g9IjMwJSIgY3k9IjI1JSI+PHN0b3Agc3RvcC1jb2xvcj0iI2ZmZiIgc3RvcC1vcGFjaXR5PSIuOTUiLz48c3RvcCBvZmZzZXQ9Ii4yIiBzdG9wLWNvbG9yPSIjZmZjOGVmIiBzdG9wLW9wYWNpdHk9Ii43NSIvPjxzdG9wIG9mZnNldD0iMSIgc3RvcC1jb2xvcj0iI2JkNjZlYSIgc3RvcC1vcGFjaXR5PSIuMTUiLz48L3JhZGlhbEdyYWRpZW50PjwvZGVmcz48Y2lyY2xlIGN4PSIzOSIgY3k9IjQyIiByPSIyMiIgZmlsbD0idXJsKCNiKSIgc3Ryb2tlPSIjZjViOWZmIiBzdHJva2Utd2lkdGg9IjIiLz48Y2lyY2xlIGN4PSI4MiIgY3k9IjI1IiByPSIxMyIgZmlsbD0idXJsKCNiKSIgc3Ryb2tlPSIjZmZjOWVkIiBzdHJva2Utd2lkdGg9IjEuNSIvPjxjaXJjbGUgY3g9IjkxIiBjeT0iNjEiIHI9IjkiIGZpbGw9InVybCgjYikiIHN0cm9rZT0iI2M4YjlmZiIgc3Ryb2tlLXdpZHRoPSIxLjUiLz48ZyBmaWxsPSIjZmZmIiBvcGFjaXR5PSIuOCI+PGVsbGlwc2UgY3g9IjMyIiBjeT0iMzIiIHJ4PSI1IiByeT0iMi41IiB0cmFuc2Zvcm09InJvdGF0ZSgtMzUgMzIgMzIpIi8+PGNpcmNsZSBjeD0iNzgiIGN5PSIyMCIgcj0iMiIvPjwvZz48L3N2Zz4="); }
+:root[data-theme="matcha"] { --theme-motif: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMjAgODAiPjxkZWZzPjxsaW5lYXJHcmFkaWVudCBpZD0ibCIgeDI9IjEiIHkyPSIxIj48c3RvcCBzdG9wLWNvbG9yPSIjYzdkZThjIi8+PHN0b3Agb2Zmc2V0PSIxIiBzdG9wLWNvbG9yPSIjNTI3ZDQ4Ii8+PC9saW5lYXJHcmFkaWVudD48L2RlZnM+PHBhdGggZD0iTTE0IDYxQzIzIDE0IDYyIDUgMTAxIDE5IDkzIDU5IDYwIDc4IDE0IDYxeiIgZmlsbD0idXJsKCNsKSIvPjxwYXRoIGQ9Ik0xOCA2MiA4OCAyNE00MiA0OWwtMy0xOG0yMSA4IDctMTdtLTMgMzIgMTgtMyIgc3Ryb2tlPSIjZTZmM2M1IiBzdHJva2Utd2lkdGg9IjIuNSIgZmlsbD0ibm9uZSIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBvcGFjaXR5PSIuNyIvPjxwYXRoIGQ9Ik0zNSA3Mmg0OCIgc3Ryb2tlPSIjOGNhODZjIiBzdHJva2Utd2lkdGg9IjQiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPjwvc3ZnPg=="); }
+:root[data-theme="gameboy"] { --theme-motif: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMjAgODAiPjxkZWZzPjxsaW5lYXJHcmFkaWVudCBpZD0iZyIgeDI9IjAiIHkyPSIxIj48c3RvcCBzdG9wLWNvbG9yPSIjZDBkOGEwIi8+PHN0b3Agb2Zmc2V0PSIxIiBzdG9wLWNvbG9yPSIjODI5NTViIi8+PC9saW5lYXJHcmFkaWVudD48L2RlZnM+PHBhdGggZD0iTTIwIDIxYzAtOCA3LTE0IDE1LTE0aDUwYzggMCAxNSA2IDE1IDE0djQyYzAgOC03IDEzLTE1IDEzSDM1Yy04IDAtMTUtNS0xNS0xM3oiIGZpbGw9InVybCgjZykiIHN0cm9rZT0iIzUzNjc0NiIgc3Ryb2tlLXdpZHRoPSI0Ii8+PHJlY3QgeD0iMzQiIHk9IjE3IiB3aWR0aD0iNTIiIGhlaWdodD0iMjYiIHJ4PSI0IiBmaWxsPSIjMjQzNzJmIi8+PHJlY3QgeD0iMzkiIHk9IjIxIiB3aWR0aD0iNDIiIGhlaWdodD0iMTgiIHJ4PSIyIiBmaWxsPSIjYThjOTc4Ii8+PHBhdGggZD0iTTQ1IDUydjE4TTM2IDYxaDE4IiBzdHJva2U9IiMzNTQ5MzQiIHN0cm9rZS13aWR0aD0iNyIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIi8+PGNpcmNsZSBjeD0iNzkiIGN5PSI1NSIgcj0iNiIgZmlsbD0iIzlhNDM2MyIvPjxjaXJjbGUgY3g9IjkxIiBjeT0iNjQiIHI9IjYiIGZpbGw9IiNhMDRjNmMiLz48Y2lyY2xlIGN4PSI1NyIgY3k9IjcwIiByPSIyLjUiIGZpbGw9IiM0YTVlNDIiLz48L3N2Zz4="); }
+:root[data-theme="theater"] { --theme-motif: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMjAgODAiPjxkZWZzPjxsaW5lYXJHcmFkaWVudCBpZD0iciIgeDI9IjAiIHkyPSIxIj48c3RvcCBzdG9wLWNvbG9yPSIjYTgyNzM2Ii8+PHN0b3Agb2Zmc2V0PSIxIiBzdG9wLWNvbG9yPSIjNGExMTFjIi8+PC9saW5lYXJHcmFkaWVudD48L2RlZnM+PHBhdGggZD0iTTggMTJoMTA0djU4SDh6IiBmaWxsPSIjMTkwYjEwIi8+PHBhdGggZD0iTTggMTJoMzRjLTMgMTItMyAxOCAwIDI4LTktNC0xNy0zLTI1IDMgNC0xMiAwLTIwLTktMzF6bTEwNCAwSDc4YzMgMTIgMyAxOCAwIDI4IDktNCAxNy0zIDI1IDMtNC0xMiAwLTIwIDktMzF6IiBmaWxsPSJ1cmwoI3IpIi8+PHBhdGggZD0iTTkgMTJjMTIgMiAxOCA5IDE4IDIwTTExMSAxMmMtMTIgMi0xOCA5LTE4IDIwIiBmaWxsPSJub25lIiBzdHJva2U9IiNkOTliNTUiIHN0cm9rZS13aWR0aD0iMiIvPjxjaXJjbGUgY3g9IjYwIiBjeT0iNDMiIHI9IjIwIiBmaWxsPSIjMmMxNzE0IiBzdHJva2U9IiNkNGExNWQiIHN0cm9rZS13aWR0aD0iNCIvPjxjaXJjbGUgY3g9IjYwIiBjeT0iNDMiIHI9IjgiIGZpbGw9IiNkNGExNWQiLz48Y2lyY2xlIGN4PSI2MCIgY3k9IjQzIiByPSIzIiBmaWxsPSIjMmMxNzE0Ii8+PC9zdmc+"); }
+:root[data-theme="arcade"] { --theme-motif: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMjAgODAiPjxkZWZzPjxsaW5lYXJHcmFkaWVudCBpZD0iYSIgeDI9IjEiIHkyPSIxIj48c3RvcCBzdG9wLWNvbG9yPSIjMjFlOGZmIi8+PHN0b3Agb2Zmc2V0PSIxIiBzdG9wLWNvbG9yPSIjYjY0Y2ZmIi8+PC9saW5lYXJHcmFkaWVudD48L2RlZnM+PHBhdGggZD0iTTE5IDI0cTAtMTIgMTMtMTJoNTZxMTMgMCAxMyAxMmw4IDM0cTIgMTAtOSAxMEgyMHEtMTEgMC05LTEweiIgZmlsbD0iIzE3MjAzOSIgc3Ryb2tlPSJ1cmwoI2EpIiBzdHJva2Utd2lkdGg9IjQiLz48cGF0aCBkPSJNMzUgMzV2MjBtLTEwLTEwaDIwIiBzdHJva2U9IiM2NWVkZmYiIHN0cm9rZS13aWR0aD0iNiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIi8+PGNpcmNsZSBjeD0iNzYiIGN5PSI0MCIgcj0iNiIgZmlsbD0iI2ZmNWRhOCIvPjxjaXJjbGUgY3g9Ijg4IiBjeT0iNTIiIHI9IjYiIGZpbGw9IiNmZmNhNWMiLz48cGF0aCBkPSJNNDggMTdoMjUiIHN0cm9rZT0iI2ZmZiIgc3Ryb2tlLXdpZHRoPSIyIiBvcGFjaXR5PSIuNyIvPjwvc3ZnPg=="); }
+:root[data-theme="ocean"] { --theme-motif: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMjAgODAiPjxkZWZzPjxsaW5lYXJHcmFkaWVudCBpZD0ibyIgeDI9IjEiIHkyPSIxIj48c3RvcCBzdG9wLWNvbG9yPSIjNjVlOWY1Ii8+PHN0b3Agb2Zmc2V0PSIxIiBzdG9wLWNvbG9yPSIjMjM2N2E2Ii8+PC9saW5lYXJHcmFkaWVudD48L2RlZnM+PHBhdGggZD0iTTE1IDQwYzE4LTI0IDU0LTI0IDc3IDAtMjMgMjQtNTkgMjQtNzcgMHoiIGZpbGw9InVybCgjbykiLz48cGF0aCBkPSJtOTEgNDAgMTktMTZ2MzJ6IiBmaWxsPSIjMjc3NWFkIi8+PGNpcmNsZSBjeD0iMzgiIGN5PSIzNSIgcj0iMyIgZmlsbD0iIzA3MWIzMyIvPjxwYXRoIGQ9Ik0xOCA2MnExNi0xMSAzMyAwdDMzIDAiIGZpbGw9Im5vbmUiIHN0cm9rZT0iIzhmZjdmZiIgc3Ryb2tlLXdpZHRoPSIzIiBzdHJva2UtbGluZWNhcD0icm91bmQiLz48ZyBmaWxsPSJub25lIiBzdHJva2U9IiM5ZmY1ZmYiIHN0cm9rZS13aWR0aD0iMiI+PGNpcmNsZSBjeD0iMjgiIGN5PSIxNiIgcj0iNSIvPjxjaXJjbGUgY3g9IjEwMyIgY3k9IjEyIiByPSIzIi8+PGNpcmNsZSBjeD0iOTYiIGN5PSI2OSIgcj0iNCIvPjwvZz48L3N2Zz4="); }
+:root[data-theme="cosmic"] { --theme-motif: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMjAgODAiPjxkZWZzPjxyYWRpYWxHcmFkaWVudCBpZD0icCIgY3g9IjMyJSIgY3k9IjI4JSI+PHN0b3Agc3RvcC1jb2xvcj0iI2Y1YjZmZiIvPjxzdG9wIG9mZnNldD0iLjQ4IiBzdG9wLWNvbG9yPSIjOGI2M2Q2Ii8+PHN0b3Agb2Zmc2V0PSIxIiBzdG9wLWNvbG9yPSIjMjUyNTRmIi8+PC9yYWRpYWxHcmFkaWVudD48L2RlZnM+PGVsbGlwc2UgY3g9IjYwIiBjeT0iNDIiIHJ4PSI0NiIgcnk9IjE1IiBmaWxsPSJub25lIiBzdHJva2U9IiNkNWFkZmYiIHN0cm9rZS13aWR0aD0iNSIgdHJhbnNmb3JtPSJyb3RhdGUoLTE4IDYwIDQyKSIvPjxjaXJjbGUgY3g9IjYwIiBjeT0iNDAiIHI9IjI0IiBmaWxsPSJ1cmwoI3ApIi8+PHBhdGggZD0iTTE2IDE5aDRtLTItMnY0TTEwMCAxNmg0bS0yLTJ2NE0yMCA2OGg0bS0yLTJ2NCIgc3Ryb2tlPSIjZmZmIiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPjxjaXJjbGUgY3g9IjkzIiBjeT0iNTYiIHI9IjMiIGZpbGw9IiNlMmM0ZmYiLz48L3N2Zz4="); }
+
+/* Sakura retains the original blossom/petal artwork and falling motion. */
 :root[data-theme="sakura"] .theme-scene::after {
   background-image: url('/theme-sakura-petal.png'), url('/theme-sakura-petal.png'), url('/theme-sakura-blossom.png'), url('/theme-sakura-sprig.png'), url('/theme-sakura-petal.png');
   background-size: clamp(17px, 2.3vw, 29px) auto, clamp(20px, 2.8vw, 34px) auto, clamp(32px, 4.4vw, 58px) auto, clamp(50px, 6vw, 82px) auto, clamp(15px, 2vw, 25px) auto;
   background-position: 7% -10%, 28% -23%, 74% -15%, 92% 14%, 53% -31%;
-  opacity: .3;
-  animation: sakura-fall 18s linear infinite;
+  background-repeat: no-repeat; opacity: .3; animation: sakura-fall 18s linear infinite;
 }
 @keyframes sakura-fall {
   0% { background-position: 7% -10%, 28% -23%, 74% -15%, 92% 14%, 53% -31%; transform: translate3d(0,-1%,0) rotate(0deg); }
   100% { background-position: 16% 116%, 36% 132%, 82% 112%, 88% 84%, 61% 128%; transform: translate3d(0,2%,0) rotate(1deg); }
 }
-:root[data-theme="cosmic"] .theme-scene::after {
-  background-image: url('/theme-cosmic-planet.png');
-  background-size: clamp(185px, 27vw, 355px) auto;
-  background-position: 92% 54%;
-  opacity: .25;
-  animation-duration: 58s;
-}
 @media (max-width: 650px) {
-  .theme-scene::after {
-    background-size: clamp(128px, 35vw, 205px) auto;
-    background-position: 98% 88%;
-    opacity: .13;
-  }
+  .theme-scene::after { background-size: 38px auto, 30px auto, 28px auto, 34px auto; opacity: .075; }
+  :root[data-theme="sakura"] .theme-scene::after { opacity: .2; }
 }
 @media (prefers-reduced-motion: reduce) {
   .theme-scene::after { animation: none !important; }

@@ -1,18 +1,31 @@
-# ROOM/05 v6.12.3 — refined theme art pass
+# ROOM/05 v6.12.6 — signaling recovery and quiet theme effects
 
-- Replaced the flat, outlined PNG artwork used by non-Sakura themes with premium cinematic CG/photo-style PNG assets. Sakura imagery and its falling-petal animation are intentionally unchanged.
-- Refined art is softly blended at the edges of all themed sections, with restrained opacity and slow motion so it does not compete with text, video or controls.
-- All original theme file names remain locally served by the Node static asset allowlist; no external image URLs are used.
-- The v6.12.2 ten-second auto-hide controls, mobile touch reveal, immersive Theater full-viewport layout and bottom participant seats remain unchanged.
+- Fixed a room-map replacement bug when the only attendee refreshed the page; the replacement participant now remains in the active room registry.
+- Added periodic draining of queued signaling packets when WebSocket back-pressure temporarily blocks delivery. SDP descriptions are preserved ahead of expendable candidate traffic, and stale queued packets from departed peers are discarded.
+- Reconnection keeps existing peer-to-peer media sessions alive during brief signaling outages, reconnects with bounded backoff, reconciles the authoritative room roster, and restores peers even when a `peer-joined` or resume event was missed.
+- ICE restarts now run through the same serialized perfect-negotiation queue as other SDP changes; failed restarts retry with backoff rather than competing offers or tight retry loops.
+- Participant rows show connecting/reconnecting status, and room-state updates no longer throw if the signaling socket closes during an interaction.
+- Fixed socket-send failures during initial join and made state/chat/reaction/heartbeat sends use a guarded signaling helper.
+- Removed the non-Sakura decorative PNG stickers from the previous aesthetic experiment. Each theme now uses subtle, filled vector motifs (for example, a small Game Boy controller, arcade pad, fish, planet, cup or curtain) positioned around the edges behind content. The original Sakura blossom/petal/sprig PNGs and falling-petal animation are unchanged.
+- Updated CSS/JavaScript cache-busting references to v6.12.6 so browsers fetch the corrected bundle.
+- Preserves the 10-second auto-hide toolbar, touch-to-reveal behavior, immersive landscape Theater layout with participant seats at the bottom, visible reaction palette, supplied original audio, accounts, chat, and presentation controls.
 
-# ROOM/05 v6.12.2 update
+## Important connectivity note
 
-- Bottom call controls auto-hide after 10 seconds of inactivity and reappear on touch, click, pointer activity, keyboard focus, or visibility return.
-- Immersive Theater hides the bottom dock immediately; touching/clicking the stage reveals it temporarily.
-- Includes 24 transparent, locally served PNG theme elements for Sakura, Arcade, Ocean, Cosmic, Theater and the other selectable themes.
-- PNG assets are included at the repository root and served by the Node static asset allowlist.
+ROOM/05 still uses peer-to-peer mesh WebRTC. Multiple STUN servers help discover direct paths, while TURN is required on some symmetric NAT, mobile-carrier and corporate networks. Add a reliable TURN provider's `TURN_URLS`, `TURN_USER`, and `TURN_PASS` values in Render for the strongest connectivity. No browser-side patch can guarantee every connection without a reachable TURN relay or an SFU architecture.
 
-# ROOM/05 v6.12.1
+
+- Signaling reconnects now reserve the same participant ID for up to two minutes after an unexpected WebSocket interruption. Existing browser-to-browser media connections stay alive while signaling recovers instead of being torn down immediately.
+- Rejoined sockets reclaim their existing room membership; page reloads get a new page-instance ID and correctly replace the old peer instead of leaving a stale connection behind.
+- Disconnected members are temporarily retained, queued ICE/SDP signaling is delivered when they return, and explicit Leave removes the member immediately.
+- The server supplies an authoritative participant roster on each application heartbeat. Clients reconcile missed join/leave notifications without blindly recreating healthy peers.
+- Client reconnection continues with bounded backoff instead of automatically ejecting participants after a small fixed number of retries. ICE restarts are delayed during normal candidate checking, retried with bounded backoff after failure/disconnection, and use serialized perfect-negotiation handling.
+- Removed the large non-Sakura decorative PNGs that made the other themes look like stickers. Theme ambience is now lightweight CSS/vector ornamentation (small gamepad, arcade marks, bubbles, planets, leaves, curtain/reel details, etc.) behind content; the original Sakura blossom/petal/sprig PNGs and falling-petal effect are unchanged.
+- Preserves the 10-second auto-hide toolbar, touch-to-reveal behavior, immersive landscape Theater layout with participant seats at the bottom, reaction palette, supplied original audio, accounts, chat, and presentation controls.
+
+## Important connectivity note
+
+ROOM/05 still uses peer-to-peer mesh WebRTC. Multiple STUN servers help discover direct paths, while TURN is required on some symmetric NAT, mobile-carrier and corporate networks. Add a reliable TURN provider's `TURN_URLS`, `TURN_USER`, and `TURN_PASS` values in Render for the strongest connectivity. No browser-side patch can guarantee every connection without a reachable TURN relay or an SFU architecture.
 
 ## v6.12.1 visible reactions, labelled animated themes and presentation fidelity
 - Moved the room reaction launcher into the persistent bottom control dock; its 18-option picker is a high-layer overlay that remains above participant video and works in desktop and mobile layouts.

@@ -474,6 +474,17 @@
   const cameraTrack = () => (localStream && localStream.getVideoTracks()[0]) || null;
   const outgoingVideoTrack = () => (screenStream && screenStream.getVideoTracks()[0]) || cameraTrack();
 
+  function sendRoomMessage(payload) {
+    const socket = ws;
+    if (!socket || socket.readyState !== WebSocket.OPEN || socket.bufferedAmount > 1_000_000) return false;
+    try { socket.send(JSON.stringify(payload)); return true; }
+    catch (error) {
+      console.warn('Room signaling send failed:', error);
+      if (socket === ws) { try { socket.close(4000, 'Signaling send failed'); } catch (_) {} }
+      return false;
+    }
+  }
+
   function applyInitialPrefs() {
     const a = audioTrack(); const v = cameraTrack();
     if (v) { try { v.contentHint = 'motion'; } catch (_) {} }
@@ -493,7 +504,7 @@
   }
 
   function broadcastState() {
-    if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'state', state }));
+    sendRoomMessage({ type: 'state', state });
     renderLocalTile();
     renderPeople();
     syncTheaterStage();
@@ -716,7 +727,8 @@
     const screenVideo = p.screenStream && p.screenStream.getVideoTracks().some((t) => t.readyState === 'live');
     const displayStream = activeRoomMode !== 'theater' && p.state.screen && screenVideo ? p.screenStream : p.stream;
     const displayState = activeRoomMode === 'theater' ? { ...p.state, screen: false } : p.state;
-    paintTile(p.tile, displayState, displayStream, p.connState && p.connState !== 'connected' ? p.connState.toUpperCase() : '');
+    const transportLabel = p.signalOffline ? 'SIGNAL RECONNECTING' : (p.connState && p.connState !== 'connected' ? p.connState.toUpperCase() : '');
+    paintTile(p.tile, displayState, displayStream, transportLabel);
   }
 
   function layoutGrid() {
@@ -735,7 +747,10 @@
   function renderPeople() {
     const list = $('participants-list');
     list.innerHTML = '';
-    const all = [{ name: localName, st: state, local: true }, ...Array.from(peers.values(), (p) => ({ name: p.name, st: p.state, local: false }))];
+    const all = [{ name: localName, st: state, local: true, connectionLabel: 'You' }, ...Array.from(peers.values(), (p) => ({
+      name: p.name, st: p.state, local: false,
+      connectionLabel: p.signalOffline ? 'Reconnecting signal…' : (p.connState === 'connected' ? 'Connected' : 'Connecting…')
+    }))];
     all.forEach((person) => {
       const row = document.createElement('div');
       row.className = 'participant-row';
@@ -747,7 +762,7 @@
       const label = document.createElement('strong');
       label.textContent = person.name + (person.local ? ' (YOU)' : '');
       const sm = document.createElement('small');
-      sm.textContent = [person.st.mic ? 'Mic on' : 'Muted', person.st.cam ? 'Camera on' : 'Camera off', person.st.hand ? '✋' : '', person.st.screen ? 'Sharing' : ''].filter(Boolean).join(' · ');
+      sm.textContent = [person.connectionLabel, person.st.mic ? 'Mic on' : 'Muted', person.st.cam ? 'Camera on' : 'Camera off', person.st.hand ? '✋' : '', person.st.screen ? 'Sharing' : ''].filter(Boolean).join(' · ');
       d.append(label, sm);
       row.append(avatar, d);
       list.appendChild(row);
@@ -834,11 +849,10 @@
     const message = String(input.value || '').trim().slice(0, 400);
     if (!message) return;
     if (!ws || ws.readyState !== WebSocket.OPEN || !inRoom) { toast('Chat is unavailable while reconnecting.'); return; }
-    try {
-      ws.send(JSON.stringify({ type: 'chat', text: message }));
+    if (sendRoomMessage({ type: 'chat', text: message })) {
       appendChat(localName + ' (YOU)', message);
       input.value = '';
-    } catch (_) { toast('Your message could not be sent. Try again.'); }
+    } else toast('Your message could not be sent while the room is reconnecting. Try again.');
   });
 
   // ---------- peer connections (perfect negotiation) ----------
@@ -883,41 +897,63 @@
     p.watchdog = setTimeout(() => {
       if (peers.get(p.id) !== p || !inRoom) return;
       const pc = p.pc;
-      const hasLiveMedia = p.stream.getTracks().some((t) => t.readyState === 'live');
-      const mediaNotExpected = p.state.cam === false && p.state.mic === false;
-      const healthy = pc.connectionState === 'connected' && (hasLiveMedia || mediaNotExpected);
-      if (healthy) { renderPeerTile(p); return; }
-      if (attempt >= 4) { scheduleIceRestart(p, 500); return; }
-      if (pc.connectionState !== 'connected') scheduleIceRestart(p, attempt === 0 ? 500 : 2500);
-      sendMyStateTo();
-      watchPeer(p, attempt + 1);
-    }, attempt === 0 ? 7000 : 9000);
+      const hasLiveMedia = [...p.stream.getTracks(), ...p.screenStream.getTracks()].some((t) => t.readyState === 'live');
+      const mediaNotExpected = p.state.cam === false && p.state.mic === false && p.state.screen === false;
+      const iceState = pc.iceConnectionState;
+      const transportHealthy = pc.connectionState === 'connected' && ['connected', 'completed'].includes(iceState);
+      const mediaStalled = transportHealthy && !hasLiveMedia && !mediaNotExpected && Date.now() - p.createdAt > 30000;
+      if (transportHealthy && (hasLiveMedia || mediaNotExpected)) { renderPeerTile(p); watchPeer(p, 0); return; }
+      const transportFailed = pc.connectionState === 'failed' || iceState === 'failed';
+      const transportDropped = pc.connectionState === 'disconnected' || iceState === 'disconnected';
+      const setupStalled = (pc.connectionState === 'connecting' || iceState === 'checking' || iceState === 'new') && Date.now() - p.createdAt > 45000;
+      if (transportFailed || transportDropped || setupStalled || mediaStalled) scheduleIceRestart(p, transportFailed ? 1200 : 7000);
+      // Keep monitoring; a checking transport is allowed time to complete
+      // before asking ICE to restart, avoiding needless renegotiation churn.
+      if (attempt === 4) sendMyStateTo();
+      watchPeer(p, Math.min(attempt + 1, 6));
+    }, attempt === 0 ? 12000 : 15000);
   }
 
   function scheduleIceRestart(peer, delay) {
     if (!peer || !peer.pc || peer.pc.signalingState === 'closed' || !inRoom) return;
-    if (peer.pc.connectionState === 'connected' || peer.pc.iceConnectionState === 'connected' || peer.pc.iceConnectionState === 'completed') return;
-    if (peer.restartTimer) return;
-    if (peer.restartAttempts >= 3) {
-      if (!peer.restartWarningShown) {
-        peer.restartWarningShown = true;
-        toast(peer.name + ': connection could not recover. A TURN relay may be required on this network.');
-      }
-      return;
-    }
+    const pc = peer.pc;
+    const ice = pc.iceConnectionState;
+    const transportHealthy = pc.connectionState === 'connected' && (ice === 'connected' || ice === 'completed');
+    if (transportHealthy || peer.restartTimer) return;
+
+    const attemptDelay = peer.restartAttempts >= 7
+      ? 30000
+      : Math.min(20000, 7000 * (2 ** Math.min(peer.restartAttempts || 0, 2)));
+    const wait = Math.max(Number(delay) || 0, attemptDelay);
     peer.restartTimer = setTimeout(() => {
       peer.restartTimer = null;
-      if (!inRoom || peers.get(peer.id) !== peer || peer.pc.signalingState === 'closed') return;
-      if (peer.pc.connectionState === 'connected' || ['connected', 'completed'].includes(peer.pc.iceConnectionState)) return;
-      peer.restartAttempts++;
-      try { peer.pc.restartIce(); } catch (error) { console.warn('ICE restart failed:', error); }
-    }, Math.max(250, Number(delay) || 1000));
+      if (!inRoom || peers.get(peer.id) !== peer || pc.signalingState === 'closed') return;
+      const currentIce = pc.iceConnectionState;
+      if (pc.connectionState === 'connected' && (currentIce === 'connected' || currentIce === 'completed')) return;
+
+      peer.restartAttempts = (peer.restartAttempts || 0) + 1;
+      peer.pendingIceRestart = true;
+      if (peer.restartAttempts === 4 && !peer.restartWarningShown) {
+        peer.restartWarningShown = true;
+        toast(peer.name + ': trying another connection route…');
+      }
+      // Serialize ICE restarts through the same perfect-negotiation queue as
+      // camera/screen renegotiations. This prevents competing offers when a
+      // participant reconnects while a track or presentation is changing.
+      if (pc.signalingState === 'stable') runPeerNegotiation(peer, true);
+      else peer.negotiationAgain = true;
+
+      const afterIce = pc.iceConnectionState;
+      if (inRoom && peers.get(peer.id) === peer && !(pc.connectionState === 'connected' && ['connected', 'completed'].includes(afterIce))) {
+        scheduleIceRestart(peer, peer.restartAttempts >= 7 ? 30000 : 15000);
+      }
+    }, wait);
   }
 
   function createPeer(id, name, initiator) {
     if (peers.has(id)) return peers.get(id);
     const pc = new RTCPeerConnection({ iceServers: config.iceServers, bundlePolicy: 'max-bundle', iceCandidatePoolSize: 10, iceTransportPolicy: 'all' });
-    const p = { id, name, pc, polite: myId > id, initiator: !!initiator, makingOffer: false, isSettingRemoteAnswerPending: false, ignoreOffer: false, stream: new MediaStream(), screenStream: new MediaStream(), cameraTransceiver: null, state: { mic: true, cam: true, screen: false, hand: false }, vsender: null, asender: null, screenSender: null, screenTransceiver: null, tile: null, connState: 'connecting', queue: Promise.resolve(), pendingCandidates: [], attached: false, watchdog: null, restartTimer: null, restartAttempts: 0, remoteAudioSource: null, remoteAudioGain: null, remoteAudioTrackId: '', audioElement: null, bitrateScale: 1, lossHighCount: 0, lossGoodCount: 0 };
+    const p = { id, name, pc, createdAt: Date.now(), polite: myId > id, initiator: !!initiator, makingOffer: false, negotiationRunning: false, negotiationAgain: false, pendingIceRestart: false, isSettingRemoteAnswerPending: false, ignoreOffer: false, stream: new MediaStream(), screenStream: new MediaStream(), cameraTransceiver: null, state: { mic: true, cam: true, screen: false, hand: false }, vsender: null, asender: null, screenSender: null, screenTransceiver: null, tile: null, connState: 'connecting', signalOffline: false, queue: Promise.resolve(), pendingCandidates: [], attached: false, watchdog: null, restartTimer: null, restartAttempts: 0, remoteAudioSource: null, remoteAudioGain: null, remoteAudioTrackId: '', audioElement: null, bitrateScale: 1, lossHighCount: 0, lossGoodCount: 0 };
     peers.set(id, p);
 
     if (initiator) {
@@ -977,20 +1013,21 @@
       console.warn('ICE server error:', event.url, event.errorCode, event.errorText);
     };
 
-    pc.onnegotiationneeded = async () => {
-      if (p.makingOffer || pc.signalingState === 'closed') return;
-      try {
-        p.makingOffer = true;
-        await pc.setLocalDescription();
-        if (pc.localDescription) sendSignal(id, { description: pc.localDescription });
-      } catch (e) { console.warn('negotiation failed', e); } finally { p.makingOffer = false; }
+    pc.onnegotiationneeded = () => { runPeerNegotiation(p); };
+
+    pc.onsignalingstatechange = () => {
+      if (pc.signalingState === 'stable' && peers.get(id) === p && inRoom && (p.negotiationAgain || p.pendingIceRestart)) {
+        p.negotiationAgain = false;
+        runPeerNegotiation(p, p.pendingIceRestart);
+      }
     };
 
     pc.onconnectionstatechange = () => {
       p.connState = pc.connectionState;
       renderPeerTile(p);
+      renderPeople();
       if (pc.connectionState === 'connected') {
-        clearTimeout(p.restartTimer); p.restartTimer = null; p.restartAttempts = 0; p.restartWarningShown = false;
+        clearTimeout(p.restartTimer); p.restartTimer = null; p.restartAttempts = 0; p.restartWarningShown = false; p.pendingIceRestart = false;
         syncPeerSenders(p);
         if (p.vsender) tuneVideoSender(p.vsender, p);
         if (p.screenSender) tuneVideoSender(p.screenSender, p, true);
@@ -999,20 +1036,21 @@
       } else if (pc.connectionState === 'failed') {
         scheduleIceRestart(p, 500);
       } else if (pc.connectionState === 'disconnected') {
-        scheduleIceRestart(p, 4500);
+        scheduleIceRestart(p, 8000);
       }
     };
     pc.oniceconnectionstatechange = () => {
       const ice = pc.iceConnectionState;
       if (ice === 'connected' || ice === 'completed') {
-        clearTimeout(p.restartTimer); p.restartTimer = null; p.restartAttempts = 0; p.restartWarningShown = false;
+        clearTimeout(p.restartTimer); p.restartTimer = null; p.restartAttempts = 0; p.restartWarningShown = false; p.pendingIceRestart = false;
       } else if (ice === 'failed') {
         scheduleIceRestart(p, 500);
       } else if (ice === 'disconnected') {
-        scheduleIceRestart(p, 4500);
+        scheduleIceRestart(p, 8000);
       }
       p.connState = pc.connectionState;
       renderPeerTile(p);
+      renderPeople();
     };
 
     // Show a tile right away, even before media arrives
@@ -1078,8 +1116,87 @@
     } catch (_) {}
   }
 
+  async function runPeerNegotiation(peer, forceIceRestart = false) {
+    if (!peer || !peer.pc || peer.pc.signalingState === 'closed') return;
+    if (forceIceRestart) peer.pendingIceRestart = true;
+    if (peer.negotiationRunning) { peer.negotiationAgain = true; return; }
+    const pc = peer.pc;
+    if (pc.signalingState !== 'stable') { peer.negotiationAgain = true; return; }
+
+    peer.negotiationRunning = true;
+    let negotiationFailed = false;
+    try {
+      do {
+        peer.negotiationAgain = false;
+        if (!inRoom || peers.get(peer.id) !== peer || pc.signalingState !== 'stable') break;
+        const restartIce = !!peer.pendingIceRestart;
+        peer.pendingIceRestart = false;
+        peer.makingOffer = true;
+        if (restartIce) {
+          const offer = await pc.createOffer({ iceRestart: true });
+          if (!inRoom || peers.get(peer.id) !== peer || pc.signalingState !== 'stable') {
+            peer.pendingIceRestart = true;
+            break;
+          }
+          await pc.setLocalDescription(offer);
+        } else {
+          await pc.setLocalDescription();
+        }
+        if (pc.localDescription) sendSignal(peer.id, { description: pc.localDescription });
+        peer.makingOffer = false;
+      } while ((peer.negotiationAgain || peer.pendingIceRestart) && pc.signalingState === 'stable');
+    } catch (error) {
+      negotiationFailed = true;
+      console.warn('Peer negotiation failed:', peer.id, error);
+      // Do not spin on an unsupported/failed ICE offer. Retry through the
+      // normal bounded timer instead of scheduling another offer immediately.
+      if (forceIceRestart || peer.pendingIceRestart) {
+        peer.pendingIceRestart = false;
+        peer.negotiationAgain = false;
+        scheduleIceRestart(peer, 15000);
+      }
+    } finally {
+      peer.makingOffer = false;
+      peer.negotiationRunning = false;
+      if (!negotiationFailed && (peer.negotiationAgain || peer.pendingIceRestart) && inRoom && peers.get(peer.id) === peer && pc.signalingState === 'stable') {
+        peer.negotiationAgain = false;
+        setTimeout(() => runPeerNegotiation(peer, peer.pendingIceRestart), 0);
+      }
+    }
+  }
+
   function sendSignal(to, data) {
-    if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'signal', to, data }));
+    if (!to || !data || !inRoom) return;
+    const packet = { type: 'signal', to, data };
+    if (ws && ws.readyState === WebSocket.OPEN && ws.bufferedAmount < 750000) {
+      try { ws.send(JSON.stringify(packet)); return; } catch (_) {}
+    }
+    let queue = pendingSignalOutbox.get(to);
+    if (!queue) { queue = []; pendingSignalOutbox.set(to, queue); }
+    // SDP descriptions are essential; keep the newest description and the
+    // newest candidate tail without allowing an offline peer to grow memory.
+    if (data.description) {
+      const previous = queue.findIndex((entry) => entry.data && entry.data.description && entry.data.description.type === data.description.type);
+      if (previous >= 0) queue.splice(previous, 1);
+    }
+    if (queue.length >= 160) {
+      const discard = queue.findIndex((entry) => !(entry.data && entry.data.description));
+      if (discard >= 0) queue.splice(discard, 1);
+      else if (data.description) queue.shift();
+      else return; // preserve the SDP queue; candidate tails can be regenerated on ICE restart
+    }
+    queue.push(packet);
+  }
+
+  function flushSignalOutbox() {
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    for (const [peerId, queue] of pendingSignalOutbox) {
+      if (!peers.has(peerId)) { pendingSignalOutbox.delete(peerId); continue; }
+      while (queue.length && ws.readyState === WebSocket.OPEN && ws.bufferedAmount < 750000) {
+        try { ws.send(JSON.stringify(queue[0])); queue.shift(); } catch (_) { break; }
+      }
+      if (!queue.length) pendingSignalOutbox.delete(peerId);
+    }
   }
 
   function handleSignal(from, data) {
@@ -1097,6 +1214,7 @@
         const offerCollision = d.type === 'offer' && !readyForOffer;
         p.ignoreOffer = !p.polite && offerCollision;
         if (p.ignoreOffer) { p.pendingCandidates.length = 0; return; }
+        if (offerCollision && p.polite) p.negotiationAgain = true;
         p.isSettingRemoteAnswerPending = d.type === 'answer';
         try {
           await pc.setRemoteDescription(d);
@@ -1112,6 +1230,10 @@
           await pc.setLocalDescription();
           if (pc.localDescription) sendSignal(p.id, { description: pc.localDescription });
         }
+        if (p.negotiationAgain && pc.signalingState === 'stable') {
+          p.negotiationAgain = false;
+          setTimeout(() => runPeerNegotiation(p), 0);
+        }
       } else if (Object.prototype.hasOwnProperty.call(data, 'candidate')) {
         if (p.ignoreOffer) return;
         if (!pc.remoteDescription) {
@@ -1123,7 +1245,7 @@
     } catch (e) { console.warn('signal handling failed', e); }
   }
 
-  function removePeer(id) {
+  function removePeer(id, quiet = false) {
     const p = peers.get(id);
     if (!p) return;
     clearTimeout(p.watchdog); clearTimeout(p.restartTimer);
@@ -1132,45 +1254,83 @@
     try { p.pc.close(); } catch (_) {}
     if (p.tile) p.tile.remove();
     peers.delete(id);
+    pendingSignalOutbox.delete(id);
     if (pinnedId === id) pinnedId = null;
     layoutGrid();
     renderPeople();
     retuneAll();
     syncTheaterStage();
-    blip('leave');
-    toast(p.name + ' left the room.');
+    if (!quiet) { blip('leave'); toast(p.name + ' left the room.'); }
+  }
+
+  function reconcilePeerRoster(roster) {
+    if (!inRoom || !Array.isArray(roster)) return;
+    const valid = roster.filter((entry) => entry && typeof entry.id === 'string' && entry.id && entry.id !== myId);
+    const present = new Set(valid.map((entry) => entry.id));
+    let changed = false;
+    valid.forEach((entry) => {
+      let peer = peers.get(entry.id);
+      if (!peer) {
+        peer = createPeer(entry.id, cleanName(entry.name) || 'Guest', true);
+        changed = true;
+      } else if (entry.name && peer.name !== entry.name) {
+        peer.name = cleanName(entry.name) || peer.name;
+        if (peer.tile) {
+          const label = peer.tile.querySelector('.tile-name, .video-name, [data-peer-name]');
+          if (label) label.textContent = peer.name;
+        }
+      }
+      peer.signalOffline = entry.connected === false;
+      if (entry.state && typeof entry.state === 'object') {
+        const next = { mic: !!entry.state.mic, cam: !!entry.state.cam, screen: !!entry.state.screen, hand: !!entry.state.hand };
+        if (JSON.stringify(peer.state) !== JSON.stringify(next)) { peer.state = next; renderPeerTile(peer); changed = true; }
+      }
+    });
+    Array.from(peers.keys()).forEach((id) => {
+      if (!present.has(id)) { removePeer(id, true); changed = true; }
+    });
+    if (changed) {
+      layoutGrid(); renderPeople(); retuneAll(); syncTheaterStage();
+      sendMyStateTo();
+    }
   }
 
   function closeAllPeers() {
     peers.forEach((p) => { clearTimeout(p.watchdog); clearTimeout(p.restartTimer); disconnectRemoteAudio(p); if (p.tile && typeof p.tile._room05SpeakingCleanup === 'function') p.tile._room05SpeakingCleanup(); try { p.pc.close(); } catch (_) {} if (p.tile) p.tile.remove(); });
     peers.clear();
+    pendingSignalOutbox.clear();
   }
 
   // ---------- signaling socket ----------
-  function openSocket() {
+  function openSocket(timeoutMs = 45000) {
     return new Promise((resolve, reject) => {
       const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
       const sock = new WebSocket(`${proto}//${location.host}/ws`);
       pendingSocket = sock;
       let settled = false;
       const clearPending = () => { if (pendingSocket === sock) pendingSocket = null; };
-      const timer = setTimeout(() => { if (!settled) { settled = true; clearPending(); try { sock.close(); } catch (_) {} reject(new Error('The room server did not respond. If this site was idle, it may be waking up — wait 30 seconds and try again.')); } }, 45000);
+      const timer = setTimeout(() => { if (!settled) { settled = true; clearPending(); try { sock.close(); } catch (_) {} reject(new Error('The room server did not respond. If this site was idle, it may be waking up — wait 30 seconds and try again.')); } }, Math.max(8000, Number(timeoutMs) || 45000));
       sock.onopen = () => {
-        sock.send(JSON.stringify({ type: 'join', room: currentCode, name: localName, sessionId: CLIENT_SESSION_ID, roomMode: requestedRoomMode }));
+        try {
+          sock.send(JSON.stringify({ type: 'join', room: currentCode, name: localName, sessionId: CLIENT_SESSION_ID, instanceId: TAB_OWNER, roomMode: requestedRoomMode }));
+        } catch (error) {
+          if (!settled) { settled = true; clearPending(); clearTimeout(timer); try { sock.close(); } catch (_) {} reject(error); }
+        }
       };
       sock.onmessage = (ev) => {
         let m; try { m = JSON.parse(ev.data); } catch { return; }
-        if (!settled && m.type === 'joined') { settled = true; clearPending(); clearTimeout(timer); resolve({ sock, joined: m }); return; }
+        if (!settled && m.type === 'joined') { settled = true; clearPending(); clearTimeout(timer); ws = sock; resolve({ sock, joined: m }); return; }
         if (!settled && m.type === 'full') { settled = true; clearPending(); clearTimeout(timer); try { sock.close(); } catch (_) {} reject(new Error('This room is full (' + m.max + ' people max).')); return; }
         if (!settled && m.type === 'error') {
           settled = true; clearPending(); clearTimeout(timer);
+          try { sock.close(); } catch (_) {}
           reject(new Error(m.reason === 'bad-session' ? 'Refresh ROOM/05 to update the room connection, then try again.' : 'Invalid room code.'));
           return;
         }
         if (settled) onServerMessage(m);
       };
-      sock.onerror = () => { if (!settled) { settled = true; clearPending(); clearTimeout(timer); reject(new Error('Could not reach the room server.')); } };
-      sock.onclose = () => { clearPending(); if (!settled) { settled = true; clearTimeout(timer); reject(new Error('Could not reach the room server.')); } else onSocketClosed(sock); };
+      sock.onerror = () => { if (!settled) { settled = true; clearPending(); clearTimeout(timer); try { sock.close(); } catch (_) {} reject(new Error('Could not reach the room server.')); } };
+      sock.onclose = (event) => { clearPending(); if (!settled) { settled = true; clearTimeout(timer); reject(new Error('Could not reach the room server.')); } else onSocketClosed(sock, event); };
     });
   }
 
@@ -1178,15 +1338,49 @@
     switch (m.type) {
       case 'peer-joined': {
         if (m.roomMode) applyRoomMode(m.roomMode);
+        const existed = peers.has(m.id);
         const p = createPeer(m.id, m.name, false);
-        p.state = { mic: true, cam: true, screen: false, hand: false };
+        if (!existed) p.state = { mic: true, cam: true, screen: false, hand: false };
+        if (m.name) {
+          p.name = cleanName(m.name) || p.name;
+          if (p.tile) {
+            const label = p.tile.querySelector('.tile-name, .video-name, [data-peer-name]');
+            if (label) label.textContent = p.name;
+          }
+        }
+        p.signalOffline = false;
+        renderPeerTile(p); renderPeople();
         blip('join');
-        toast(m.name + ' joined.');
+        toast(p.name + ' joined.');
         sendMyStateTo();
         break;
       }
       case 'peer-left': removePeer(m.id); break;
-      case 'pong': lastPong = Date.now(); break;
+      case 'peer-reconnecting': {
+        const peer = peers.get(m.id) || createPeer(m.id, cleanName(m.name) || 'Guest', true);
+        peer.signalOffline = true;
+        renderPeerTile(peer); renderPeople();
+        break;
+      }
+      case 'peer-resumed': {
+        const peer = peers.get(m.id) || createPeer(m.id, cleanName(m.name) || 'Guest', true);
+        peer.signalOffline = false;
+        if (m.name) {
+          peer.name = cleanName(m.name) || peer.name;
+          if (peer.tile) {
+            const label = peer.tile.querySelector('.tile-name, .video-name, [data-peer-name]');
+            if (label) label.textContent = peer.name;
+          }
+        }
+        if (m.state) peer.state = m.state;
+        renderPeerTile(peer); renderPeople(); syncTheaterStage();
+        break;
+      }
+      case 'pong':
+        lastPong = Date.now();
+        if (Array.isArray(m.peers)) reconcilePeerRoster(m.peers);
+        flushSignalOutbox();
+        break;
       case 'signal': handleSignal(m.from, m.data); break;
       case 'presentation-denied': {
         toast((m.name || 'Someone else') + ' is already presenting. Your share was stopped.');
@@ -1194,8 +1388,10 @@
         break;
       }
       case 'state': {
-        const p = peers.get(m.id);
-        if (p) { p.state = m.state; renderPeerTile(p); renderPeople(); syncTheaterStage(); }
+        const p = peers.get(m.id) || createPeer(m.id, cleanName(m.name) || 'Guest', true);
+        if (m.state) p.state = m.state;
+        p.signalOffline = false;
+        renderPeerTile(p); renderPeople(); syncTheaterStage();
         break;
       }
       case 'chat': appendChat(m.name, m.text); notifyChat(); blip('ping'); break;
@@ -1204,55 +1400,67 @@
     }
   }
 
-  function sendMyStateTo() { if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'state', state })); }
+  function sendMyStateTo() { sendRoomMessage({ type: 'state', state }); }
 
-  function onSocketClosed(sock) {
+  function onSocketClosed(sock, event) {
     if (sock !== ws || leaving || !inRoom) return;
     ws = null;
+    // A second page instance for the same account/room replaces this page's
+    // signaling socket. Do not let the superseded page race to reclaim it.
+    if (event && event.code === 4001) {
+      toast('This room is active in another page.');
+      leaveRoom();
+      return;
+    }
     setStatus('RECONNECTING', 'warn');
-    closeAllPeers();
-    layoutGrid();
+    // P2P media does not depend on the signaling socket after negotiation.
+    // Keep existing PeerConnections alive while the room socket recovers.
     if (!reconnectTask) {
       reconnectTask = attemptReconnect().finally(() => { reconnectTask = null; });
     }
   }
 
   async function attemptReconnect() {
-    for (let attempt = 1; attempt <= 8; attempt++) {
-      if (leaving || !inRoom) return;
+    let attempt = 0;
+    while (!leaving && inRoom) {
+      attempt++;
       retryCount = attempt;
-      await new Promise((resolve) => setTimeout(resolve, Math.min(1000 * attempt, 6000)));
+      const baseDelay = Math.min(12000, 900 * (2 ** Math.min(attempt - 1, 4)));
+      const delay = Math.round(baseDelay * (0.85 + Math.random() * 0.3));
+      await new Promise((resolve) => setTimeout(resolve, delay));
       if (leaving || !inRoom) return;
       let candidate = null;
       try {
-        const opened = await openSocket();
+        const previousId = myId;
+        const opened = await openSocket(15000);
         candidate = opened.sock;
-        if (leaving || !inRoom) { try { candidate.close(); } catch (_) {} return; }
-        if (candidate.readyState !== WebSocket.OPEN) throw new Error('Socket closed while reconnecting.');
+        if (leaving || !inRoom) {
+          try { if (candidate.readyState === WebSocket.OPEN) candidate.send(JSON.stringify({ type: 'leave' })); candidate.close(); } catch (_) {}
+          return;
+        }
+        if (candidate.readyState !== WebSocket.OPEN) throw new Error('The replacement room connection closed before joining.');
         ws = candidate;
+        const identityChanged = !!previousId && previousId !== opened.joined.id;
         myId = opened.joined.id;
         retryCount = 0;
-        setStatus('CONNECTED', 'ok');
-        closeAllPeers();
+        if (identityChanged) closeAllPeers();
         applyRoomMode(opened.joined.roomMode || requestedRoomMode);
-        opened.joined.peers.forEach((pr) => {
-          const peer = createPeer(pr.id, pr.name, true);
-          if (pr.state && Object.keys(pr.state).length) peer.state = pr.state;
-        });
-        syncTheaterStage();
+        reconcilePeerRoster(opened.joined.peers || []);
+        flushSignalOutbox();
+        setStatus('CONNECTED', 'ok');
         sendMyStateTo();
         startHeartbeat();
-        layoutGrid();
-        renderPeople();
+        startStats();
+        syncTheaterStage(); layoutGrid(); renderPeople();
         toast('Connection restored.');
         return;
       } catch (error) {
         if (candidate && candidate === ws && candidate.readyState !== WebSocket.OPEN) ws = null;
+        if (!leaving && inRoom) {
+          setStatus('RECONNECTING', 'warn');
+          if (attempt === 1 || attempt % 5 === 0) console.warn('Room signaling reconnect attempt ' + attempt + ' failed:', error);
+        }
       }
-    }
-    if (!leaving && inRoom) {
-      toast('Connection lost. Please rejoin the room.');
-      leaveRoom();
     }
   }
 
@@ -1260,11 +1468,17 @@
   function startHeartbeat() {
     stopHeartbeat(); lastPong = Date.now();
     hbTimer = setInterval(() => {
-      if (!ws || ws.readyState !== 1) return;
-      if (Date.now() - lastPong > 50000) { try { ws.close(); } catch (_) {} return; }
-      ws.send(JSON.stringify({ type: 'ping' }));
-      sendMyStateTo();
-    }, 15000);
+      if (!ws || ws.readyState !== WebSocket.OPEN) return;
+      // Browser timers can pause during screen lock or Android app switching.
+      // Only declare a dead socket after a long visible-page timeout.
+      if (document.visibilityState === 'visible' && Date.now() - lastPong > 120000) {
+        try { ws.close(4000, 'Room signaling heartbeat timed out'); } catch (_) {}
+        return;
+      }
+      if (!sendRoomMessage({ type: 'ping' })) return;
+      if (document.visibilityState === 'visible') sendMyStateTo();
+      flushSignalOutbox();
+    }, 20000);
   }
   function stopHeartbeat() { clearInterval(hbTimer); hbTimer = null; }
   async function acquireWakeLock() { try { if (navigator.wakeLock && !wakeLock) { wakeLock = await navigator.wakeLock.request('screen'); wakeLock.addEventListener('release', () => { wakeLock = null; }); } } catch (_) {} }
@@ -1370,7 +1584,9 @@
         if (callAudioContext.state === 'running' && remoteAudioPrompt) remoteAudioPrompt.classList.add('hidden');
       }).catch(() => showRemoteAudioPrompt());
     }
-    if (ws && ws.readyState !== 1) { try { ws.close(); } catch (_) {} }
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+      if (!reconnectTask && !leaving) reconnectTask = attemptReconnect().finally(() => { reconnectTask = null; });
+    } else if (Date.now() - lastPong > 90000) sendRoomMessage({ type: 'ping' });
     clearTimeout(cameraResumeTimer);
     cameraResumeTimer = setTimeout(() => {
       if (document.visibilityState === 'visible' && inRoom) {
@@ -1382,7 +1598,7 @@
   document.addEventListener('visibilitychange', handleRoomForeground);
   window.addEventListener('pageshow', handleRoomForeground);
   window.addEventListener('focus', handleRoomForeground);
-  window.addEventListener('online', () => { if (inRoom) { toast('Back online — reconnecting…'); if (ws && ws.readyState !== 1) { try { ws.close(); } catch (_) {} } } });
+  window.addEventListener('online', () => { if (inRoom) { toast('Network restored — checking room connection…'); if (!ws || ws.readyState !== WebSocket.OPEN) { if (!reconnectTask) { reconnectTask = attemptReconnect().finally(() => { reconnectTask = null; }); } } else if (!sendRoomMessage({ type: 'ping' })) { /* next heartbeat/reconnect handles it */ } } });
   window.addEventListener('offline', () => { if (inRoom) { setStatus('OFFLINE', 'warn'); toast('You are offline.'); } });
 
   function startStats() {
@@ -1491,7 +1707,7 @@
       layoutGrid();
 
       const { sock, joined } = await openSocket();
-      if (leaving) { try { sock.close(); } catch (_) {} return; }
+      if (leaving) { try { if (sock.readyState === WebSocket.OPEN) sock.send(JSON.stringify({ type: 'leave' })); sock.close(); } catch (_) {} return; }
       if (sock.readyState !== WebSocket.OPEN) throw new Error('The room connection closed while joining. Please try again.');
       ws = sock;
       myId = joined.id;
@@ -1564,7 +1780,7 @@
     document.body.classList.remove('theater-immersive-active');
     syncTheaterImmersiveButton();
     setReactionPickerOpen(false);
-    if (ws) { const s = ws; ws = null; try { s.close(); } catch (_) {} }
+    if (ws) { const s = ws; ws = null; try { if (s.readyState === WebSocket.OPEN) s.send(JSON.stringify({ type: 'leave' })); s.close(); } catch (_) {} }
     if (pendingSocket) { const s = pendingSocket; pendingSocket = null; try { s.close(); } catch (_) {} }
     closeAllPeers();
     cleanupMedia();
@@ -2492,7 +2708,7 @@
       const emoji = button.dataset.reaction;
       setReactionPickerOpen(false);
       activateReaction(emoji, localName + ' (YOU)');
-      try { ws.send(JSON.stringify({ type: 'reaction', emoji })); } catch (_) {}
+      sendRoomMessage({ type: 'reaction', emoji });
     });
   });
 
@@ -2501,7 +2717,7 @@
   if (icebreakerBtn) icebreakerBtn.addEventListener('click', () => {
     if (!ws || ws.readyState !== 1) return;
     const text = '🎲 ' + ICEBREAKERS[(Math.random() * ICEBREAKERS.length) | 0];
-    ws.send(JSON.stringify({ type: 'chat', text })); appendChat(localName + ' (YOU)', text);
+    if (sendRoomMessage({ type: 'chat', text })) appendChat(localName + ' (YOU)', text);
   });
   const FILTERS = [['none', 'Normal'], ['grayscale(1) contrast(1.1)', 'Noir'], ['sepia(.9) contrast(1.05)', 'Old film'], ['hue-rotate(90deg) saturate(1.6)', 'Alien'], ['saturate(2.2) contrast(1.15)', 'Pop'], ['invert(1) hue-rotate(180deg)', 'Negative'], ['contrast(1.4) saturate(1.8) hue-rotate(-30deg)', 'Neon'], ['saturate(1.55) hue-rotate(-24deg) contrast(1.08)', 'Sunset glow'], ['blur(.35px) saturate(1.75) brightness(1.14)', 'Dreamcore'], ['contrast(1.45) saturate(1.35) hue-rotate(155deg)', 'Glitchwave']];
   function cycleFilter(tile) {

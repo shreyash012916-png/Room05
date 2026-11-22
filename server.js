@@ -22,7 +22,7 @@ const TERMS_VERSION = '1.0';
 const PRIVACY_VERSION = '1.1';
 const SESSION_MAX_AGE = 30 * 24 * 60 * 60;
 const PUBLIC_FILES = ['index.html', 'style.css', 'auth.css', 'auth.js', 'main.js', 'polish.css', 'legal.css', 'terms.html', 'privacy.html', 'developers.html', 'favicon.svg', 'airhorn-original.m4a', 'aarti-original.m4a', 'dance-track.mp3',
-  'theme-arcade-cabinet.png', 'theme-arcade-invader.png', 'theme-arcade-ship.png', 'theme-arcade-star.png', 'theme-aurora-ribbon.png', 'theme-bubblegum-bubbles.png', 'theme-cosmic-planet.png', 'theme-cosmic-star.png', 'theme-cream-cup.png', 'theme-cyber-cube.png', 'theme-gameboy-handheld.png', 'theme-grape-cluster.png', 'theme-matcha-leaf.png', 'theme-midnight-moon.png', 'theme-ocean-bubble.png', 'theme-ocean-fish.png', 'theme-sakura-blossom.png', 'theme-sakura-petal.png', 'theme-sakura-sprig.png', 'theme-sunset-sun.png', 'theme-terminal-monitor.png', 'theme-theater-reel.png', 'theme-theater-ticket.png', 'theme-vapor-sun.png'] ;
+  'theme-sakura-blossom.png', 'theme-sakura-petal.png', 'theme-sakura-sprig.png'];
 const MIME = {
   '.html': 'text/html; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
@@ -347,7 +347,9 @@ for (const file of PUBLIC_FILES) {
   } catch (error) { console.error('Missing file', file, error.message); }
 }
 
-const rooms = new Map(); // code -> Map(id -> {ws, name, sessionId, state})
+const rooms = new Map(); // code -> Map(id -> {ws, name, sessionId, state, pendingSignals})
+const RECONNECT_GRACE_MS = 120000;
+const MAX_PENDING_SIGNALS = 256;
 const server = http.createServer((req, res) => {
   void (async () => {
     let pathname;
@@ -429,7 +431,60 @@ server.on('upgrade', (req, socket, head) => {
   wss.handleUpgrade(req, socket, head, (ws) => wss.emit('connection', ws, req));
 });
 
-const out = (ws, msg) => { if (ws.readyState === 1) ws.send(JSON.stringify(msg)); };
+const out = (ws, msg) => {
+  if (!ws || ws.readyState !== 1) return false;
+  // A slow tab must not build an unbounded signaling backlog.
+  if (ws.bufferedAmount > 1_500_000) return false;
+  try { ws.send(JSON.stringify(msg)); return true; } catch (_) { return false; }
+};
+
+function roomRoster(members, exceptId) {
+  return Array.from(members, ([id, member]) => id === exceptId ? null : ({
+    id, name: member.name, state: member.state, connected: !!member.ws && member.ws.readyState === 1
+  })).filter(Boolean);
+}
+
+function removeRoomMember(code, id, member) {
+  const members = rooms.get(code);
+  if (!members || members.get(id) !== member) return;
+  if (member.disconnectTimer) clearTimeout(member.disconnectTimer);
+  members.delete(id);
+  members.forEach((peer) => out(peer.ws, { type: 'peer-left', id }));
+  if (members.size === 0) rooms.delete(code);
+}
+
+// Drain queued SDP/ICE messages whenever a temporarily slow/offline peer can
+// accept them again. Do not splice the queue before confirming each send.
+function queuePendingSignal(member, packet) {
+  if (!member || !packet) return;
+  const queue = Array.isArray(member.pendingSignals) ? member.pendingSignals : (member.pendingSignals = []);
+  if (queue.length >= MAX_PENDING_SIGNALS) {
+    // Keep SDP descriptions ahead of expendable candidate noise. ICE can be
+    // restarted to regenerate candidates; silently losing the latest SDP is
+    // much more damaging to a peer's ability to establish a connection.
+    const candidateIndex = queue.findIndex((entry) => !(entry && entry.data && entry.data.description));
+    if (candidateIndex >= 0) queue.splice(candidateIndex, 1);
+    else if (packet.data && packet.data.description) queue.shift();
+    else return;
+  }
+  queue.push(packet);
+}
+
+function flushPendingSignals(member, limit = 64, members = null) {
+  if (!member || !member.ws || member.ws.readyState !== 1) return 0;
+  let sent = 0;
+  const queue = Array.isArray(member.pendingSignals) ? member.pendingSignals : [];
+  while (queue.length && sent < limit && member.ws.readyState === 1 && member.ws.bufferedAmount < 750_000) {
+    const packet = queue[0];
+    if (members && packet && packet.from && !members.has(packet.from)) { queue.shift(); continue; }
+    if (!out(member.ws, packet)) break;
+    queue.shift();
+    sent++;
+  }
+  member.pendingSignals = queue;
+  return sent;
+}
+
 
 wss.on('connection', (ws) => {
   // Keep short signaling packets low-latency on supported Node sockets.
@@ -439,8 +494,8 @@ wss.on('connection', (ws) => {
   } catch (_) {}
   let room = null;
   let me = null;
-  ws.isAlive = true;
-  ws.on('pong', () => { ws.isAlive = true; });
+  ws.lastPongAt = Date.now();
+  ws.on('pong', () => { ws.lastPongAt = Date.now(); });
 
   ws.on('message', (raw) => {
     let message;
@@ -448,39 +503,75 @@ wss.on('connection', (ws) => {
     if (!message || typeof message.type !== 'string') return;
     const now = Date.now();
     if (now - (ws.winStart || 0) > 10000) { ws.winStart = now; ws.winCount = 0; }
-    if (++ws.winCount > 400) return;
-    if (message.type === 'ping') return out(ws, { type: 'pong' });
+    if (++ws.winCount > 1200) return;
+    if (message.type === 'ping') {
+      const currentMembers = room ? rooms.get(room) : null;
+      return out(ws, { type: 'pong', peers: currentMembers && me ? roomRoster(currentMembers, me) : [] });
+    }
 
     if (message.type === 'join' && !room) {
       const code = clean(message.room, 8).toUpperCase();
       if (!/^[A-HJ-NP-Z2-9]{8}$/.test(code)) return out(ws, { type: 'error', reason: 'bad-room' });
       const sessionId = clean(message.sessionId, 80);
-      if (!/^[a-f0-9]{36}$/.test(sessionId)) return out(ws, { type: 'error', reason: 'bad-session' });
+      const instanceId = clean(message.instanceId, 80);
+      if (!/^[a-f0-9]{36}$/.test(sessionId) || !/^[a-z0-9-]{8,80}$/i.test(instanceId)) return out(ws, { type: 'error', reason: 'bad-session' });
+      const name = clean(message.name, 28) || 'Guest';
 
       let members = rooms.get(code);
       if (!members) { members = new Map(); members.roomMode = message.roomMode === 'theater' ? 'theater' : 'normal'; rooms.set(code, members); }
       if (!members.roomMode) members.roomMode = members.size === 0 && message.roomMode === 'theater' ? 'theater' : 'normal';
       const roomMode = members.roomMode === 'theater' ? 'theater' : 'normal';
-      // A reconnect from the same browser tab reclaims its existing place.
-      for (const [oldId, oldMember] of members) {
-        if (oldMember.sessionId !== sessionId) continue;
-        members.delete(oldId);
-        members.forEach((member) => out(member.ws, { type: 'peer-left', id: oldId }));
-        if (oldMember.ws && oldMember.ws !== ws) {
-          oldMember.ws.room05Superseded = true;
-          try { oldMember.ws.close(4001, 'ROOM/05 session resumed'); } catch (_) {}
+
+      // Reclaim the same logical member for up to two minutes after a brief
+      // WebSocket interruption. Keeping the same peer ID lets healthy P2P
+      // media connections survive signaling reconnects without video flicker.
+      for (const [existingId, existing] of members) {
+        if (existing.sessionId !== sessionId) continue;
+        // Same document instance = temporary signaling reconnect. A full page
+        // reload gets a new instanceId and must replace the old PeerConnections.
+        if (existing.instanceId !== instanceId) {
+          const previousSocket = existing.ws;
+          // Replace the old page member in-place. Calling removeRoomMember here
+          // could delete the room Map when this is the only attendee, leaving
+          // the replacement member stored in an orphaned Map no one can join.
+          if (existing.disconnectTimer) clearTimeout(existing.disconnectTimer);
+          members.delete(existingId);
+          members.forEach((peer) => out(peer.ws, { type: 'peer-left', id: existingId }));
+          if (previousSocket && previousSocket !== ws) {
+            previousSocket.room05Superseded = true;
+            try { previousSocket.close(4001, 'ROOM/05 page instance replaced'); } catch (_) {}
+          }
+          break;
         }
-        break;
+        if (existing.disconnectTimer) { clearTimeout(existing.disconnectTimer); existing.disconnectTimer = null; }
+        const previousSocket = existing.ws;
+        existing.ws = ws;
+        existing.name = name || existing.name;
+        existing.disconnectedAt = 0;
+        existing.pendingSignals = Array.isArray(existing.pendingSignals) ? existing.pendingSignals : [];
+        room = code;
+        me = existingId;
+        const peers = roomRoster(members, me);
+        out(ws, { type: 'joined', id: me, peers, roomMode, resumed: true });
+        members.forEach((peer, id) => {
+          if (id !== me) out(peer.ws, { type: 'peer-resumed', id: me, name: existing.name, state: existing.state });
+        });
+        flushPendingSignals(existing, MAX_PENDING_SIGNALS, members);
+        if (previousSocket && previousSocket !== ws) {
+          previousSocket.room05Superseded = true;
+          try { previousSocket.close(4001, 'ROOM/05 signaling resumed'); } catch (_) {}
+        }
+        return;
       }
 
       if (members.size >= MAX_PEOPLE) return out(ws, { type: 'full', max: MAX_PEOPLE });
       me = crypto.randomBytes(12).toString('hex');
       room = code;
-      const name = clean(message.name, 28) || 'Guest';
-      const peers = Array.from(members, ([id, member]) => ({ id, name: member.name, state: member.state }));
-      members.set(me, { ws, name, sessionId, state: { mic: true, cam: true, screen: false, hand: false } });
-      out(ws, { type: 'joined', id: me, peers, roomMode });
-      members.forEach((member, id) => { if (id !== me) out(member.ws, { type: 'peer-joined', id: me, name, roomMode }); });
+      const peers = roomRoster(members, me);
+      const member = { ws, name, sessionId, instanceId, state: { mic: true, cam: true, screen: false, hand: false }, pendingSignals: [], disconnectTimer: null, disconnectedAt: 0 };
+      members.set(me, member);
+      out(ws, { type: 'joined', id: me, peers, roomMode, resumed: false });
+      members.forEach((peer, id) => { if (id !== me) out(peer.ws, { type: 'peer-joined', id: me, name, roomMode }); });
       return;
     }
     if (!room || !me) return;
@@ -489,9 +580,17 @@ wss.on('connection', (ws) => {
     const self = members.get(me);
     if (!self || self.ws !== ws) return;
 
-    if (message.type === 'signal' && typeof message.to === 'string') {
+    if (message.type === 'leave') {
+      removeRoomMember(room, me, self);
+      room = null; me = null;
+      out(ws, { type: 'left' });
+      return;
+    } else if (message.type === 'signal' && typeof message.to === 'string' && message.data && typeof message.data === 'object') {
       const target = members.get(message.to);
-      if (target) out(target.ws, { type: 'signal', from: me, data: message.data });
+      if (target) {
+        const packet = { type: 'signal', from: me, data: message.data };
+        if (!out(target.ws, packet)) queuePendingSignal(target, packet);
+      }
     } else if (message.type === 'state' && message.state && typeof message.state === 'object') {
       const wantsPresentation = !!message.state.screen;
       const activePresenter = wantsPresentation ? Array.from(members.entries()).find(([id, member]) => id !== me && member.state && member.state.screen) : null;
@@ -509,28 +608,48 @@ wss.on('connection', (ws) => {
 
   ws.on('close', () => {
     if (!room || !me) return;
-    const members = rooms.get(room);
+    const code = room;
+    const id = me;
+    const members = rooms.get(code);
     if (!members) return;
-    const current = members.get(me);
+    const current = members.get(id);
+    // A replaced socket must never mark the newly-resumed socket offline.
     if (!current || current.ws !== ws) return;
-    members.delete(me);
-    members.forEach((member) => out(member.ws, { type: 'peer-left', id: me }));
-    if (members.size === 0) rooms.delete(room);
+    current.ws = null;
+    current.disconnectedAt = Date.now();
+    if (current.disconnectTimer) clearTimeout(current.disconnectTimer);
+    members.forEach((peer) => out(peer.ws, { type: 'peer-reconnecting', id, name: current.name }));
+    current.disconnectTimer = setTimeout(() => removeRoomMember(code, id, current), RECONNECT_GRACE_MS);
   });
   ws.on('error', () => {});
 });
 
-// Keep WebSocket connections alive and remove dead peers.
+// Render and mobile networks can briefly pause or hand off a connection.
+// Require multiple missed protocol heartbeat windows before terminating it.
+const SIGNAL_HEARTBEAT_INTERVAL = 30000;
+const SIGNAL_HEARTBEAT_TIMEOUT = 105000;
 setInterval(() => {
+  const now = Date.now();
   wss.clients.forEach((ws) => {
-    if (!ws.isAlive) return ws.terminate();
-    ws.isAlive = false;
+    if (ws.readyState !== 1) return;
+    if (now - (ws.lastPongAt || now) > SIGNAL_HEARTBEAT_TIMEOUT) {
+      try { ws.terminate(); } catch (_) {}
+      return;
+    }
     try { ws.ping(); } catch (_) {}
   });
-}, 25000);
+}, SIGNAL_HEARTBEAT_INTERVAL);
+
+// Back-pressure can temporarily defer signaling even while a socket remains
+// connected. Retry the small SDP/ICE queue promptly instead of waiting for a
+// full reconnect event that may never occur.
+const SIGNAL_QUEUE_FLUSH_INTERVAL = setInterval(() => {
+  rooms.forEach((members) => members.forEach((member) => flushPendingSignals(member, 32, members)));
+}, 2500);
 
 server.keepAliveTimeout = 65000;
 const shutdown = () => {
+  clearInterval(SIGNAL_QUEUE_FLUSH_INTERVAL);
   wss.clients.forEach((client) => { try { client.close(1001); } catch (_) {} });
   server.close(() => {
     pool.end().catch((error) => console.error('Database pool shutdown error:', error.message));

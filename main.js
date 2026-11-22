@@ -133,7 +133,18 @@
   let currentCode = '';
   let localName = '';
   let localStream = null;      // camera + mic
-  let screenStream = null;
+  let screenStream = null;     // local screen capture or theatre media capture
+  let activeRoomMode = 'normal';
+  let requestedRoomMode = 'normal';
+  let theaterMediaActive = false;
+  let theaterMediaUrl = '';
+  let presentationAudioDestination = null;
+  let presentationAudioSources = [];
+  let presentationSharedTrack = null;
+  let theaterMediaElementSource = null;
+  let roomMusicTimer = null;
+  let roomMusicOn = false;
+  let aartiTimer = null;
   let peers = new Map();       // id -> {id, name, pc, polite, makingOffer, ignoreOffer, stream, state, vsender, asender, tile}
   let state = { mic: true, cam: true, screen: false, hand: false };
   let inRoom = false;
@@ -222,18 +233,21 @@
   // ---------- quality presets ----------
   function qualityFor(peerCount) {
     const q = prefs.quality;
-    if (q === 'max') return { w: 1920, h: 1080, fps: 30, bitrate: 4500000 };
-    if (q === 'data') return { w: 640, h: 360, fps: 24, bitrate: 450000 };
-    if (q === 'hd') return { w: 1280, h: 720, fps: 30, bitrate: 2200000 };
-    // auto: the more people, the more everyone uploads, so share the upload budget
-    if (peerCount <= 1) return { w: 1920, h: 1080, fps: 30, bitrate: 4000000 };
-    if (peerCount === 2) return { w: 1280, h: 720, fps: 30, bitrate: 2200000 };
-    if (peerCount === 3) return { w: 1280, h: 720, fps: 30, bitrate: 1600000 };
-    return { w: 960, h: 540, fps: 30, bitrate: 1100000 };
+    // High presets are capped automatically for larger mesh rooms so a
+    // phone never has to encode several 720p/1080p copies at once.
+    if (q === 'max' && peerCount <= 1) return { w: 1920, h: 1080, fps: 30, bitrate: 4500000 };
+    if (q === 'hd' && peerCount <= 2) return { w: 1280, h: 720, fps: 24, bitrate: 1200000 };
+    if (q === 'data' && peerCount <= 2) return { w: 640, h: 360, fps: 18, bitrate: 280000 };
+    // Mesh mode sends one copy to every other person. Keep the combined
+    // outbound budget phone-friendly as the room fills up.
+    if (peerCount <= 1) return { w: 1280, h: 720, fps: 24, bitrate: 1000000 };
+    if (peerCount === 2) return { w: 800, h: 450, fps: 18, bitrate: 420000 };
+    if (peerCount === 3) return { w: 480, h: 270, fps: 15, bitrate: 230000 };
+    return { w: 426, h: 240, fps: 12, bitrate: 160000 };
   }
   function retuneAll() {
     const q = qualityFor(peers.size);
-    peers.forEach((p) => { if (p.vsender) tuneVideoSender(p.vsender); });
+    peers.forEach((p) => { if (p.vsender) tuneVideoSender(p.vsender, p); if (p.screenSender) tuneVideoSender(p.screenSender, p, true); });
     const t = cameraTrack();
     if (t && t.applyConstraints) t.applyConstraints({ width: { ideal: q.w }, height: { ideal: q.h }, frameRate: { ideal: q.fps, max: q.fps } }).catch(() => {});
   }
@@ -322,6 +336,7 @@
   }
 
   const audioTrack = () => (localStream && localStream.getAudioTracks()[0]) || null;
+  const outgoingAudioTrack = () => (presentationAudioDestination && presentationAudioDestination.stream.getAudioTracks()[0]) || audioTrack();
   const cameraTrack = () => (localStream && localStream.getVideoTracks()[0]) || null;
   const outgoingVideoTrack = () => (screenStream && screenStream.getVideoTracks()[0]) || cameraTrack();
 
@@ -347,6 +362,7 @@
     if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'state', state }));
     renderLocalTile();
     renderPeople();
+    syncTheaterStage();
   }
 
   // ---------- speaking indicator ----------
@@ -444,6 +460,11 @@
     const v = tile.querySelector('video');
     v.classList.toggle('screen-track', !!st.screen);
     if (stream && v.srcObject !== stream) v.srcObject = stream;
+    // A remote track can recover after a network or app-switch interruption
+    // while its video element remains paused. Retry playback on every render.
+    if (hasVideo && v.paused) {
+      try { const playback = v.play(); if (playback && playback.catch) playback.catch(() => {}); } catch (_) {}
+    }
     const parts = [];
     if (st.screen) parts.push('SHARING');
     parts.push(st.mic ? 'MIC ON' : 'MUTED');
@@ -471,15 +492,15 @@
   function renderLocalTile() {
     if (!localTile) return;
     const display = new MediaStream();
-    const vt = outgoingVideoTrack();
+    const vt = (activeRoomMode === 'theater' && state.screen) ? cameraTrack() : outgoingVideoTrack();
     if (vt) display.addTrack(vt);
     const v = localTile.querySelector('video');
     if (!v.srcObject || v.dataset.vt !== (vt ? vt.id : '')) { v.srcObject = display; v.dataset.vt = vt ? vt.id : ''; }
-    v.classList.toggle('self-video', !state.screen && prefs.mirror);
-    const hasVideo = !!vt && vt.readyState === 'live' && (state.cam || state.screen);
+    v.classList.toggle('self-video', (!state.screen || activeRoomMode === 'theater') && prefs.mirror);
+    const hasVideo = !!vt && vt.readyState === 'live' && (activeRoomMode === 'theater' ? state.cam : (state.cam || state.screen));
     localTile.classList.toggle('no-video', !hasVideo);
     localTile.querySelector('.hand-flag').classList.toggle('hidden', !state.hand);
-    v.classList.toggle('screen-track', state.screen);
+    v.classList.toggle('screen-track', state.screen && activeRoomMode !== 'theater');
     const s = localTile.querySelector('.tile-status');
     s.textContent = (state.screen ? 'SHARING · ' : '') + (state.mic ? 'MIC ON' : 'MUTED');
     s.classList.toggle('muted', !state.mic);
@@ -487,7 +508,10 @@
 
   function renderPeerTile(p) {
     if (!p.tile) return;
-    paintTile(p.tile, p.state, p.stream, p.connState && p.connState !== 'connected' ? p.connState.toUpperCase() : '');
+    const screenVideo = p.screenStream && p.screenStream.getVideoTracks().some((t) => t.readyState === 'live');
+    const displayStream = activeRoomMode !== 'theater' && p.state.screen && screenVideo ? p.screenStream : p.stream;
+    const displayState = activeRoomMode === 'theater' ? { ...p.state, screen: false } : p.state;
+    paintTile(p.tile, displayState, displayStream, p.connState && p.connState !== 'connected' ? p.connState.toUpperCase() : '');
   }
 
   function layoutGrid() {
@@ -527,25 +551,36 @@
 
   // ---------- peer connections (perfect negotiation) ----------
   // Attach our camera/mic to a peer's audio+video transceivers (never needs renegotiation later: we just swap tracks).
-  async function attachSenders(p, at, vt) {
+  async function attachSenders(p, at, vt, st) {
     p.asender = at ? at.sender : null;
     p.vsender = vt ? vt.sender : null;
+    p.screenSender = st ? st.sender : null;
+    p.screenTransceiver = st || p.screenTransceiver || null;
     p.attached = true;
     const jobs = [];
-    if (p.asender && audioTrack() && p.asender.track !== audioTrack()) jobs.push(p.asender.replaceTrack(audioTrack()));
-    if (p.vsender && outgoingVideoTrack() && p.vsender.track !== outgoingVideoTrack()) jobs.push(p.vsender.replaceTrack(outgoingVideoTrack()));
+    const atTrack = outgoingAudioTrack();
+    const vtTrack = cameraTrack();
+    const stTrack = screenStream && screenStream.getVideoTracks()[0];
+    if (p.asender && atTrack && p.asender.track !== atTrack) jobs.push(p.asender.replaceTrack(atTrack));
+    if (p.vsender && vtTrack && p.vsender.track !== vtTrack) jobs.push(p.vsender.replaceTrack(vtTrack));
+    if (p.screenSender && p.screenSender.track !== (stTrack || null)) jobs.push(p.screenSender.replaceTrack(stTrack || null));
     try { await Promise.all(jobs); } catch (e) { console.warn('attach failed', e); }
     if (p.asender) tuneAudioSender(p.asender);
-    if (p.vsender) tuneVideoSender(p.vsender);
+    if (p.vsender) tuneVideoSender(p.vsender, p);
+    if (p.screenSender) tuneVideoSender(p.screenSender, p, true);
   }
 
-  // The newcomer always makes the first offer; the people already in the room just answer. No collisions, no lost media.
+  // Each connection has separate camera and presentation video transceivers.
+  // This lets a movie/screen occupy the big stage without taking away the camera tile.
   async function attachFromOffer(p) {
     const ts = p.pc.getTransceivers();
-    const find = (kind) => ts.find((t) => t.receiver && t.receiver.track && t.receiver.track.kind === kind && !t.stopped);
-    const at = find('audio'), vt = find('video');
-    [at, vt].forEach((t) => { if (t) { try { t.direction = 'sendrecv'; } catch (_) {} } });
-    await attachSenders(p, at, vt);
+    const live = ts.filter((t) => t.receiver && t.receiver.track && !t.stopped);
+    const at = live.find((t) => t.receiver.track.kind === 'audio');
+    const videos = live.filter((t) => t.receiver.track.kind === 'video');
+    const vt = videos[0] || null;
+    const st = videos[1] || null;
+    [at, vt, st].forEach((t) => { if (t) { try { t.direction = 'sendrecv'; } catch (_) {} } });
+    await attachSenders(p, at, vt, st);
   }
 
   function watchPeer(p, attempt) {
@@ -566,21 +601,32 @@
   function createPeer(id, name, initiator) {
     if (peers.has(id)) return peers.get(id);
     const pc = new RTCPeerConnection({ iceServers: config.iceServers, bundlePolicy: 'max-bundle', iceCandidatePoolSize: 4 });
-    const p = { id, name, pc, polite: myId > id, initiator: !!initiator, makingOffer: false, ignoreOffer: false, stream: new MediaStream(), state: { mic: true, cam: true, screen: false, hand: false }, vsender: null, asender: null, tile: null, connState: 'connecting', queue: Promise.resolve(), pendingCandidates: [], attached: false, watchdog: null };
+    const p = { id, name, pc, polite: myId > id, initiator: !!initiator, makingOffer: false, ignoreOffer: false, stream: new MediaStream(), screenStream: new MediaStream(), state: { mic: true, cam: true, screen: false, hand: false }, vsender: null, asender: null, screenSender: null, screenTransceiver: null, tile: null, connState: 'connecting', queue: Promise.resolve(), pendingCandidates: [], attached: false, watchdog: null, bitrateScale: 1, lossHighCount: 0, lossGoodCount: 0 };
     peers.set(id, p);
 
     if (initiator) {
-      const at = audioTrack(), vt = outgoingVideoTrack();
+      const at = outgoingAudioTrack(), vt = cameraTrack(), st = screenStream && screenStream.getVideoTracks()[0];
       const ta = at ? pc.addTransceiver(at, { direction: 'sendrecv', streams: [localStream] }) : pc.addTransceiver('audio', { direction: 'sendrecv' });
       const tv = vt ? pc.addTransceiver(vt, { direction: 'sendrecv', streams: [localStream] }) : pc.addTransceiver('video', { direction: 'sendrecv' });
-      p.asender = ta.sender; p.vsender = tv.sender; p.attached = true;
+      const ts = st ? pc.addTransceiver(st, { direction: 'sendrecv' }) : pc.addTransceiver('video', { direction: 'sendrecv' });
+      p.asender = ta.sender; p.vsender = tv.sender; p.screenSender = ts.sender; p.screenTransceiver = ts; p.attached = true;
     }
 
-    pc.ontrack = ({ track }) => {
-      p.stream.addTrack(track);
-      track.onended = () => { try { p.stream.removeTrack(track); } catch (_) {} renderPeerTile(p); };
-      track.onmute = () => renderPeerTile(p);
-      track.onunmute = () => renderPeerTile(p);
+    pc.ontrack = ({ track, transceiver }) => {
+      const videoTransceivers = pc.getTransceivers().filter((t) => t.receiver && t.receiver.track && t.receiver.track.kind === 'video' && !t.stopped);
+      const isPresentationTrack = track.kind === 'video' && (transceiver === p.screenTransceiver || videoTransceivers.indexOf(transceiver) > 0);
+      const receivingStream = isPresentationTrack ? p.screenStream : p.stream;
+      if (!receivingStream.getTracks().some((existing) => existing.id === track.id)) receivingStream.addTrack(track);
+      // The presentation stream also carries the peer's mixed microphone/media audio
+      // so normal-mode screen-share tiles remain audible.
+      if (track.kind === 'audio' && !p.screenStream.getTracks().some((existing) => existing.id === track.id)) p.screenStream.addTrack(track);
+      track.onended = () => {
+        try { receivingStream.removeTrack(track); } catch (_) {}
+        renderPeerTile(p);
+        syncTheaterStage();
+      };
+      track.onmute = () => { renderPeerTile(p); syncTheaterStage(); };
+      track.onunmute = () => { renderPeerTile(p); syncTheaterStage(); };
       if (!p.tile) {
         p.tile = buildTile(id, p.name, false);
         videoGrid.appendChild(p.tile);
@@ -588,13 +634,16 @@
         layoutGrid();
         renderPeople();
       }
-      const v = p.tile.querySelector('video');
-      v.onloadedmetadata = v.onresize = v.onplaying = () => renderPeerTile(p);
-      v.srcObject = p.stream; // re-attach so every browser (Safari included) picks up late tracks
+      if (!isPresentationTrack) {
+        const v = p.tile.querySelector('video');
+        v.onloadedmetadata = v.onresize = v.onplaying = () => renderPeerTile(p);
+        v.srcObject = p.stream;
+        const sink = $('audio-output-select').value;
+        if (sink && v.setSinkId) v.setSinkId(sink).catch(() => {});
+        const playing = v.play(); if (playing && playing.catch) playing.catch(() => {});
+      }
       renderPeerTile(p);
-      const sink = $('audio-output-select').value;
-      if (sink && v.setSinkId) v.setSinkId(sink).catch(() => {});
-      const playing = v.play(); if (playing && playing.catch) playing.catch(() => {});
+      syncTheaterStage();
     };
 
     pc.onicecandidate = ({ candidate }) => { if (candidate) sendSignal(id, { candidate }); };
@@ -611,7 +660,8 @@
       p.connState = pc.connectionState;
       renderPeerTile(p);
       if (pc.connectionState === 'connected') {
-        if (p.vsender) tuneVideoSender(p.vsender);
+        if (p.vsender) tuneVideoSender(p.vsender, p);
+        if (p.screenSender) tuneVideoSender(p.screenSender, p, true);
         if (p.asender) tuneAudioSender(p.asender);
         sendMyStateTo(); // make sure they know our camera/mic state the moment media can flow
       }
@@ -629,19 +679,22 @@
     layoutGrid();
     renderPeople();
     retuneAll();
+    syncTheaterStage();
     watchPeer(p, 0);
     return p;
   }
 
-  function tuneVideoSender(sender) {
+  function tuneVideoSender(sender, peer, presentation) {
     try {
       const q = qualityFor(peers.size);
+      const scale = peer && Number.isFinite(peer.bitrateScale) ? peer.bitrateScale : 1;
+      const presentationBitrate = peers.size >= 3 ? 480000 : (peers.size === 2 ? 720000 : 1100000);
       const params = sender.getParameters();
       if (!params.encodings || !params.encodings.length) params.encodings = [{}];
-      params.encodings[0].maxBitrate = state.screen ? Math.max(q.bitrate, 3000000) : q.bitrate;
-      params.encodings[0].maxFramerate = q.fps;
+      params.encodings[0].maxBitrate = Math.max(90000, Math.round((presentation ? presentationBitrate : q.bitrate) * (presentation ? 1 : scale)));
+      params.encodings[0].maxFramerate = presentation ? (peers.size >= 3 ? 15 : 20) : Math.max(8, Math.round(q.fps * Math.sqrt(scale)));
       params.encodings[0].networkPriority = 'high';
-      params.degradationPreference = state.screen ? 'maintain-resolution' : 'balanced';
+      params.degradationPreference = 'balanced';
       sender.setParameters(params).catch(() => {});
     } catch (_) {}
   }
@@ -698,6 +751,7 @@
     layoutGrid();
     renderPeople();
     retuneAll();
+    syncTheaterStage();
     blip('leave');
     toast(p.name + ' left the room.');
   }
@@ -715,7 +769,7 @@
       let settled = false;
       const timer = setTimeout(() => { if (!settled) { settled = true; try { sock.close(); } catch (_) {} reject(new Error('The room server did not respond. If this site was idle, it may be waking up — wait 30 seconds and try again.')); } }, 45000);
       sock.onopen = () => {
-        sock.send(JSON.stringify({ type: 'join', room: currentCode, name: localName, sessionId: CLIENT_SESSION_ID }));
+        sock.send(JSON.stringify({ type: 'join', room: currentCode, name: localName, sessionId: CLIENT_SESSION_ID, roomMode: requestedRoomMode }));
       };
       sock.onmessage = (ev) => {
         let m; try { m = JSON.parse(ev.data); } catch { return; }
@@ -736,6 +790,7 @@
   function onServerMessage(m) {
     switch (m.type) {
       case 'peer-joined': {
+        if (m.roomMode) applyRoomMode(m.roomMode);
         const p = createPeer(m.id, m.name, false);
         p.state = { mic: true, cam: true, screen: false, hand: false };
         blip('join');
@@ -746,9 +801,14 @@
       case 'peer-left': removePeer(m.id); break;
       case 'pong': lastPong = Date.now(); break;
       case 'signal': handleSignal(m.from, m.data); break;
+      case 'presentation-denied': {
+        toast((m.name || 'Someone else') + ' is already presenting. Your share was stopped.');
+        if (state.screen) { if (theaterMediaActive) stopTheaterMedia(); else stopScreenShare(); }
+        break;
+      }
       case 'state': {
         const p = peers.get(m.id);
-        if (p) { p.state = m.state; renderPeerTile(p); renderPeople(); }
+        if (p) { p.state = m.state; renderPeerTile(p); renderPeople(); syncTheaterStage(); }
         break;
       }
       case 'chat': appendChat(m.name, m.text); notifyChat(); blip('ping'); break;
@@ -787,10 +847,12 @@
         retryCount = 0;
         setStatus('CONNECTED', 'ok');
         closeAllPeers();
+        applyRoomMode(opened.joined.roomMode || requestedRoomMode);
         opened.joined.peers.forEach((pr) => {
           const peer = createPeer(pr.id, pr.name, true);
           if (pr.state && Object.keys(pr.state).length) peer.state = pr.state;
         });
+        syncTheaterStage();
         sendMyStateTo();
         startHeartbeat();
         layoutGrid();
@@ -827,9 +889,9 @@
   let cameraRestoreTask = null;
 
   function resumeVisibleVideoElements() {
-    videoGrid.querySelectorAll('video').forEach((video) => {
+    document.querySelectorAll('#video-grid video, #theater-stage-video').forEach((video) => {
       const stream = video.srcObject;
-      if (!stream || !stream.getVideoTracks().some((track) => track.readyState === 'live')) return;
+      if (!stream || !stream.getVideoTracks || !stream.getVideoTracks().some((track) => track.readyState === 'live')) return;
       if (video.paused || video.readyState < 2) {
         try {
           const playTask = video.play();
@@ -899,7 +961,7 @@
         if (current) localStream.removeTrack(current);
         localStream.addTrack(replacement);
         if (current && current.readyState !== 'ended') { try { current.stop(); } catch (_) {} }
-        if (!state.screen) await setOutgoingVideo(replacement);
+        await setOutgoingVideo(replacement);
         renderLocalTile();
         resumeVisibleVideoElements();
         broadcastState();
@@ -937,10 +999,18 @@
       for (const p of peers.values()) {
         try {
           const stats = await p.pc.getStats();
+          let remoteLoss = null;
           stats.forEach((r) => {
             if (r.type === 'candidate-pair' && r.state === 'succeeded' && r.nominated && typeof r.currentRoundTripTime === 'number') { any = true; worstRtt = Math.max(worstRtt, r.currentRoundTripTime * 1000); }
             if (r.type === 'inbound-rtp' && r.kind === 'video' && r.packetsReceived > 100 && r.packetsLost / (r.packetsReceived + r.packetsLost) > 0.08) lossHigh = true;
+            if (r.type === 'remote-inbound-rtp' && r.kind === 'video' && typeof r.fractionLost === 'number') remoteLoss = Math.max(remoteLoss || 0, r.fractionLost);
           });
+          if (remoteLoss !== null && p.vsender) {
+            if (remoteLoss > 0.08) { p.lossHighCount++; p.lossGoodCount = 0; }
+            else if (remoteLoss < 0.025) { p.lossGoodCount++; p.lossHighCount = 0; }
+            if (p.lossHighCount >= 2) { p.bitrateScale = Math.max(0.35, (p.bitrateScale || 1) * 0.72); p.lossHighCount = 0; tuneVideoSender(p.vsender, p); }
+            else if (p.lossGoodCount >= 5) { p.bitrateScale = Math.min(1, (p.bitrateScale || 1) + 0.12); p.lossGoodCount = 0; tuneVideoSender(p.vsender, p); }
+          }
         } catch (_) {}
       }
       if (!inRoom || ws == null || ws.readyState !== 1) return;
@@ -964,7 +1034,7 @@
     setStatus('CONNECTING', '');
   }
 
-  async function enterRoom(code) {
+  async function enterRoom(code, roomMode) {
     if (entering || inRoom) return;
     setError('');
     const name = cleanName($('display-name').value);
@@ -985,6 +1055,7 @@
       roomTabClaimed = true;
       localName = name;
       currentCode = code;
+      requestedRoomMode = roomMode === 'theater' ? 'theater' : 'normal';
       leaving = false;
       retryCount = 0;
 
@@ -1008,12 +1079,14 @@
       ws = sock;
       myId = joined.id;
       inRoom = true;
+      applyRoomMode(joined.roomMode || requestedRoomMode);
       setStatus('CONNECTED', 'ok');
       startHeartbeat(); startStats(); acquireWakeLock();
       joined.peers.forEach((pr) => {
         const p = createPeer(pr.id, pr.name, true);
         if (pr.state && Object.keys(pr.state).length) p.state = pr.state;
       });
+      syncTheaterStage();
       sendMyStateTo();
       renderPeople();
       layoutGrid();
@@ -1043,14 +1116,21 @@
   }
 
   function cleanupMedia() {
+    clearInterval(roomMusicTimer); roomMusicTimer = null; roomMusicOn = false;
+    presentationAudioSources.forEach((source) => { try { source.disconnect(); } catch (_) {} }); presentationAudioSources = []; presentationAudioDestination = null; presentationSharedTrack = null;
+    if (theaterMediaUrl) { try { URL.revokeObjectURL(theaterMediaUrl); } catch (_) {} theaterMediaUrl = ''; }
+    theaterMediaActive = false;
     [localStream, screenStream].forEach((s) => { if (s) s.getTracks().forEach((t) => t.stop()); });
     localStream = null; screenStream = null; localTile = null;
+    restoreTheaterStageSource();
   }
 
   function leaveRoom() {
     leaving = true; inRoom = false; retryCount = 0;
     releaseRoomTab();
     clearTimeout(partyTimer);
+    clearTimeout(aartiTimer); aartiTimer = null;
+    roomMusicOn = false; clearInterval(roomMusicTimer); roomMusicTimer = null;
     partyTimer = null;
     callScreen.classList.remove('party');
     document.querySelectorAll('#call-screen .party-banner, #call-screen .confetti').forEach((node) => node.remove());
@@ -1067,6 +1147,7 @@
     landing.classList.remove('hidden');
     $('side-panel').classList.add('hidden');
     videoGrid.innerHTML = '';
+    videoGrid.classList.remove('aarti-active');
     $('chat-messages').innerHTML = '<div class="chat-empty" id="chat-empty"><span>✳</span><strong>Quiet in here.</strong><p>Start the conversation. Messages disappear when the room closes.</p></div>';
     setBusy(false);
     try { const u = new URL(location.href); u.searchParams.delete('room'); history.replaceState({}, '', u.pathname + u.search + u.hash); } catch (_) {}
@@ -1079,7 +1160,8 @@
       t = await acquireTrack('audio');
       if (!t) { toast('Microphone is blocked or in use. Allow it in your browser, then tap again.'); return; }
       state.mic = true;
-      for (const p of peers.values()) { if (p.asender) { try { await p.asender.replaceTrack(t); } catch (_) {} } }
+      if (presentationSharedTrack) await setPresentationAudio(presentationSharedTrack);
+      else await setOutgoingAudio(t);
       syncButtons(); broadcastState(); toast('Microphone connected.'); return;
     }
     state.mic = !state.mic; t.enabled = state.mic; syncButtons(); broadcastState();
@@ -1090,7 +1172,7 @@
       t = await acquireTrack('video');
       if (!t) { toast('Camera is blocked or in use by another app. Allow it, then tap again.'); return; }
       state.cam = true;
-      if (!state.screen) await setOutgoingVideo(t);
+      await setOutgoingVideo(t);
       syncButtons(); broadcastState(); toast('Camera connected.'); return;
     }
     state.cam = !state.cam; t.enabled = state.cam; syncButtons(); broadcastState();
@@ -1099,9 +1181,57 @@
 
   async function setOutgoingVideo(track) {
     for (const p of peers.values()) {
+      try { if (p.vsender) await p.vsender.replaceTrack(track || null); }
+      catch (e) { console.warn('camera replaceTrack failed', e); }
+    }
+  }
+
+  async function setPresentationVideo(track) {
+    for (const p of peers.values()) {
       try {
-        if (p.vsender) { await p.vsender.replaceTrack(track); }
-      } catch (e) { console.warn('replaceTrack failed', e); }
+        if (p.screenSender) { await p.screenSender.replaceTrack(track || null); tuneVideoSender(p.screenSender, p, true); }
+        else if (p.vsender) await p.vsender.replaceTrack(track || cameraTrack());
+      } catch (e) { console.warn('presentation replaceTrack failed', e); }
+    }
+  }
+
+  async function setOutgoingAudio(track) {
+    for (const p of peers.values()) {
+      try { if (p.asender) await p.asender.replaceTrack(track || null); }
+      catch (e) { console.warn('audio replaceTrack failed', e); }
+    }
+  }
+
+  async function setPresentationAudio(sharedTrack) {
+    presentationAudioSources.forEach((source) => { try { source.disconnect(); } catch (_) {} });
+    presentationAudioSources = [];
+    presentationAudioDestination = null;
+    presentationSharedTrack = sharedTrack || null;
+    if (!sharedTrack) {
+      await setOutgoingAudio(audioTrack());
+      return;
+    }
+    try {
+      audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+      if (audioCtx.state === 'suspended') await audioCtx.resume();
+      const destination = audioCtx.createMediaStreamDestination();
+      const mic = audioTrack();
+      if (mic) {
+        const micSource = audioCtx.createMediaStreamSource(new MediaStream([mic]));
+        micSource.connect(destination);
+        presentationAudioSources.push(micSource);
+      }
+      const sharedSource = audioCtx.createMediaStreamSource(new MediaStream([sharedTrack]));
+      sharedSource.connect(destination);
+      presentationAudioSources.push(sharedSource);
+      presentationAudioDestination = destination;
+      const mixed = destination.stream.getAudioTracks()[0];
+      if (mixed) await setOutgoingAudio(mixed);
+    } catch (error) {
+      console.warn('Presentation audio mixing unavailable:', error);
+      presentationAudioDestination = null;
+      presentationSharedTrack = null;
+      await setOutgoingAudio(audioTrack());
     }
   }
 
@@ -1111,16 +1241,140 @@
     // with the toolbar stop action.
     screenStream = null;
     state.screen = false;
+    theaterMediaActive = false;
     if (previousStream) {
       previousStream.getTracks().forEach((t) => {
         t.onended = null;
         if (t.readyState !== 'ended') { try { t.stop(); } catch (_) {} }
       });
     }
-    await setOutgoingVideo(cameraTrack());
-    peers.forEach((p) => { if (p.vsender) tuneVideoSender(p.vsender); });
-    syncButtons(); broadcastState();
+    await setPresentationVideo(null);
+    await setPresentationAudio(null);
+    restoreTheaterStageSource();
+    peers.forEach((p) => { if (p.screenSender) tuneVideoSender(p.screenSender, p, true); });
+    syncTheaterStage(); syncButtons(); broadcastState();
   }
+
+
+  const theaterStage = $('theater-stage');
+  const theaterStageVideo = $('theater-stage-video');
+  const theaterEmpty = $('theater-empty');
+  const mediaPicker = $('theater-media-file');
+  function applyRoomMode(mode) {
+    activeRoomMode = mode === 'theater' ? 'theater' : 'normal';
+    callScreen.classList.toggle('theater-mode', activeRoomMode === 'theater');
+    $('theater-controls').classList.toggle('hidden', activeRoomMode !== 'theater');
+    $('theater-stage').classList.toggle('hidden', activeRoomMode !== 'theater');
+    document.body.classList.toggle('theater-room', activeRoomMode === 'theater');
+    peers.forEach((p) => renderPeerTile(p));
+    syncTheaterStage();
+    layoutGrid();
+  }
+
+  function restoreTheaterStageSource() {
+    if (!theaterStageVideo) return;
+    theaterStageVideo.pause();
+    theaterStageVideo.removeAttribute('src');
+    theaterStageVideo.srcObject = null;
+    theaterStageVideo.controls = false;
+    if (theaterMediaUrl) { try { URL.revokeObjectURL(theaterMediaUrl); } catch (_) {} theaterMediaUrl = ''; }
+  }
+
+  function syncTheaterStage() {
+    if (!theaterStageVideo || activeRoomMode !== 'theater') return;
+    if (state.screen && screenStream && !theaterMediaActive) {
+      if (theaterStageVideo.srcObject !== screenStream) {
+        theaterStageVideo.pause();
+        theaterStageVideo.removeAttribute('src');
+        theaterStageVideo.srcObject = screenStream;
+        theaterStageVideo.controls = false;
+      }
+      const play = theaterStageVideo.play(); if (play && play.catch) play.catch(() => {});
+      theaterStageVideo.muted = true;
+      theaterStage.classList.add('has-media');
+      if (theaterEmpty) theaterEmpty.classList.add('hidden');
+      return;
+    }
+    if (theaterMediaActive) {
+      theaterStageVideo.muted = false;
+      theaterStage.classList.add('has-media');
+      if (theaterEmpty) theaterEmpty.classList.add('hidden');
+      theaterStageVideo.controls = true;
+      return;
+    }
+    const presentingPeer = Array.from(peers.values()).find((p) => p.state.screen && p.screenStream.getVideoTracks().some((t) => t.readyState === 'live'));
+    if (presentingPeer) {
+      if (theaterStageVideo.srcObject !== presentingPeer.screenStream) {
+        theaterStageVideo.pause(); theaterStageVideo.removeAttribute('src');
+        theaterStageVideo.srcObject = presentingPeer.screenStream;
+      }
+      theaterStageVideo.controls = false;
+      theaterStageVideo.muted = true;
+      theaterStage.classList.add('has-media');
+      const play = theaterStageVideo.play(); if (play && play.catch) play.catch(() => {});
+      if (theaterEmpty) theaterEmpty.classList.add('hidden');
+      return;
+    }
+    theaterStageVideo.pause(); theaterStageVideo.srcObject = null; theaterStage.classList.remove('has-media');
+    if (theaterEmpty) theaterEmpty.classList.remove('hidden');
+  }
+
+  async function stopTheaterMedia() {
+    if (!theaterMediaActive && !screenStream) return;
+    const previous = screenStream;
+    theaterMediaActive = false;
+    screenStream = null;
+    state.screen = false;
+    if (previous) previous.getTracks().forEach((track) => { track.onended = null; if (track.readyState !== 'ended') { try { track.stop(); } catch (_) {} } });
+    await setPresentationVideo(null);
+    await setPresentationAudio(null);
+    restoreTheaterStageSource();
+    if (mediaPicker) mediaPicker.value = '';
+    syncTheaterStage(); syncButtons(); renderLocalTile(); broadcastState();
+  }
+
+  async function startTheaterMedia(file) {
+    if (!file || activeRoomMode !== 'theater') return;
+    const otherShare = Array.from(peers.values()).some((p) => p.state.screen);
+    if (state.screen || otherShare) { toast('Someone is already presenting. Stop their share before starting another.'); return; }
+    const captureMethod = theaterStageVideo.captureStream || theaterStageVideo.mozCaptureStream;
+    if (typeof captureMethod !== 'function') { toast('This browser cannot stream a selected video file. Try screen sharing from a supported desktop browser.'); return; }
+    restoreTheaterStageSource();
+    theaterMediaUrl = URL.createObjectURL(file);
+    theaterMediaActive = true;
+    theaterStageVideo.src = theaterMediaUrl;
+    theaterStageVideo.controls = true;
+    theaterStageVideo.playsInline = true;
+    try {
+      await theaterStageVideo.play();
+      await new Promise((resolve, reject) => {
+        if (theaterStageVideo.readyState >= 2) { resolve(); return; }
+        const onReady = () => { cleanup(); resolve(); };
+        const onError = () => { cleanup(); reject(new Error('The selected video could not be opened.')); };
+        const cleanup = () => { theaterStageVideo.removeEventListener('loadeddata', onReady); theaterStageVideo.removeEventListener('error', onError); };
+        theaterStageVideo.addEventListener('loadeddata', onReady, { once: true });
+        theaterStageVideo.addEventListener('error', onError, { once: true });
+      });
+      const captured = captureMethod.call(theaterStageVideo);
+      const videoTrack = captured.getVideoTracks()[0];
+      if (!videoTrack) throw new Error('No video track was created from this file.');
+      screenStream = captured;
+      videoTrack.contentHint = 'motion';
+      videoTrack.onended = () => { if (theaterMediaActive) stopTheaterMedia(); };
+      state.screen = true;
+      await setPresentationVideo(videoTrack);
+      await setPresentationAudio(captured.getAudioTracks()[0] || null);
+      syncTheaterStage(); renderLocalTile(); syncButtons(); broadcastState();
+      toast('Now playing for the room. The host controls playback.');
+    } catch (error) {
+      console.warn('Theater media could not start:', error);
+      await stopTheaterMedia();
+      toast(error.message || 'Could not play that video in Theater mode.');
+    }
+  }
+  if (mediaPicker) mediaPicker.addEventListener('change', (event) => startTheaterMedia(event.target.files && event.target.files[0]));
+  $('choose-theater-media').addEventListener('click', () => { if (mediaPicker) mediaPicker.click(); });
+  if (theaterStageVideo) theaterStageVideo.addEventListener('ended', () => { if (theaterMediaActive) stopTheaterMedia(); });
 
   function screenShareUnavailableMessage() {
     if (!window.isSecureContext) return 'Screen sharing requires this room to be opened over HTTPS.';
@@ -1131,7 +1385,7 @@
   }
 
   $('toggle-screen').addEventListener('click', async () => {
-    if (state.screen) { await stopScreenShare(); toast('Screen sharing stopped.'); return; }
+    if (state.screen) { if (theaterMediaActive) await stopTheaterMedia(); else await stopScreenShare(); toast('Sharing stopped.'); return; }
     if (!window.isSecureContext || !navigator.mediaDevices || typeof navigator.mediaDevices.getDisplayMedia !== 'function') {
       toast(screenShareUnavailableMessage());
       return;
@@ -1139,27 +1393,30 @@
     let captured = null;
     try {
       // getDisplayMedia must be called directly from this button gesture.
-      captured = await navigator.mediaDevices.getDisplayMedia({
-        video: { frameRate: { ideal: 30 } },
-        audio: false
-      });
+      try {
+        captured = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: { ideal: 20 } }, audio: true });
+      } catch (captureError) {
+        if (captureError && ['NotSupportedError', 'TypeError'].includes(captureError.name)) {
+          captured = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: { ideal: 20 } }, audio: false });
+        } else throw captureError;
+      }
       const track = captured.getVideoTracks()[0];
       if (!track) throw new Error('No screen video track was provided.');
       screenStream = captured;
+      theaterMediaActive = false;
       try { track.contentHint = 'detail'; } catch (_) {}
-      track.onended = () => {
-        if (state.screen && screenStream === captured) stopScreenShare();
-      };
+      track.onended = () => { if (state.screen && screenStream === captured) stopScreenShare(); };
       state.screen = true;
-      await setOutgoingVideo(track);
-      peers.forEach((p) => { if (p.vsender) tuneVideoSender(p.vsender); });
-      syncButtons(); broadcastState();
+      await setPresentationVideo(track);
+      await setPresentationAudio(captured.getAudioTracks()[0] || null);
+      syncTheaterStage(); renderLocalTile(); broadcastState();
       toast('Screen sharing started.');
     } catch (e) {
       if (captured) captured.getTracks().forEach((t) => { try { t.stop(); } catch (_) {} });
       if (screenStream === captured) screenStream = null;
       state.screen = false;
-      syncButtons(); renderLocalTile();
+      await setPresentationVideo(null); await setPresentationAudio(null);
+      syncTheaterStage(); syncButtons(); renderLocalTile();
       if (e && e.name === 'NotAllowedError') {
         toast('Screen sharing is unavailable here or browser permission was denied. Try a supported desktop browser and check permissions.');
       } else if (e && e.name === 'AbortError') {
@@ -1234,7 +1491,82 @@
     if (emoji === '🎉') confetti();
     else if (emoji === '🪩') party();
     else if (emoji === '📢') airhorn();
+    else if (emoji === '🪔') aartiMode();
+    else if (emoji === '🎵') toggleRoomMusic();
   }
+
+  function aartiMode() {
+    if (!videoGrid || !videoGrid.isConnected) return;
+    videoGrid.querySelectorAll('.aarti-orbit').forEach((node) => node.remove());
+    videoGrid.classList.remove('aarti-active');
+    void videoGrid.offsetWidth;
+    videoGrid.classList.add('aarti-active');
+    const overlay = document.createElement('div');
+    overlay.className = 'aarti-orbit';
+    overlay.setAttribute('aria-hidden', 'true');
+    ['🪔','✨','🪔','✨','🪔','✨','🪔','✨'].forEach((glyph, index) => {
+      const item = document.createElement('span');
+      item.textContent = glyph;
+      item.style.setProperty('--orbit-index', String(index));
+      overlay.appendChild(item);
+    });
+    videoGrid.appendChild(overlay);
+    clearTimeout(aartiTimer);
+    aartiTimer = setTimeout(() => { videoGrid.classList.remove('aarti-active'); overlay.remove(); }, 7200);
+    if (!prefs.sound) return;
+    try {
+      audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+      [1046.5, 1318.5, 1568, 1318.5, 1760].forEach((frequency, i) => {
+        const start = audioCtx.currentTime + i * 0.22;
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        const overtone = audioCtx.createOscillator();
+        const overtoneGain = audioCtx.createGain();
+        osc.type = 'sine'; osc.frequency.setValueAtTime(frequency, start);
+        overtone.type = 'sine'; overtone.frequency.setValueAtTime(frequency * 2.01, start);
+        gain.gain.setValueAtTime(0.0001, start); gain.gain.exponentialRampToValueAtTime(0.13, start + 0.012); gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.55);
+        overtoneGain.gain.setValueAtTime(0.0001, start); overtoneGain.gain.exponentialRampToValueAtTime(0.045, start + 0.01); overtoneGain.gain.exponentialRampToValueAtTime(0.0001, start + 0.3);
+        osc.connect(gain); gain.connect(audioCtx.destination); overtone.connect(overtoneGain); overtoneGain.connect(audioCtx.destination);
+        osc.start(start); osc.stop(start + 0.58); overtone.start(start); overtone.stop(start + 0.32);
+      });
+    } catch (_) {}
+  }
+
+  function musicBar() {
+    if (!audioCtx || audioCtx.state !== 'running') return;
+    const base = audioCtx.currentTime + 0.025;
+    const bass = [110, 130.81, 98, 146.83];
+    const melody = [440, 392, 329.63, 392, 523.25, 440, 392, 329.63];
+    bass.forEach((frequency, index) => {
+      const start = base + index * 0.52;
+      const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain();
+      osc.type = 'triangle'; osc.frequency.setValueAtTime(frequency, start);
+      gain.gain.setValueAtTime(0.0001, start); gain.gain.exponentialRampToValueAtTime(0.055, start + 0.035); gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.43);
+      osc.connect(gain); gain.connect(audioCtx.destination); osc.start(start); osc.stop(start + 0.45);
+    });
+    melody.forEach((frequency, index) => {
+      const start = base + index * 0.26 + 0.04;
+      const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain();
+      osc.type = 'sine'; osc.frequency.setValueAtTime(frequency, start);
+      gain.gain.setValueAtTime(0.0001, start); gain.gain.exponentialRampToValueAtTime(0.024, start + 0.02); gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.2);
+      osc.connect(gain); gain.connect(audioCtx.destination); osc.start(start); osc.stop(start + 0.22);
+    });
+  }
+  function toggleRoomMusic() {
+    if (!prefs.sound) { toast('Turn on SOUNDS & HAPTICS in Setup to hear the room beat.'); return; }
+    roomMusicOn = !roomMusicOn;
+    clearInterval(roomMusicTimer); roomMusicTimer = null;
+    if (!roomMusicOn) { toast('Room beat paused.'); return; }
+    try {
+      audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+      musicBar();
+      roomMusicTimer = setInterval(musicBar, 2080);
+      toast('ROOM/05 original lo-fi loop: on.');
+    } catch (_) { roomMusicOn = false; toast('Audio is unavailable in this browser.'); }
+  }
+
   function confetti() {
     try {
       const c = document.createElement('canvas'); c.className = 'confetti';
@@ -1311,9 +1643,12 @@
       if (old) { localStream.removeTrack(old); old.stop(); }
       track.enabled = kind === 'audio' ? state.mic : state.cam;
       localStream.addTrack(track);
-      for (const p of peers.values()) {
-        if (kind === 'audio') { if (p.asender) await p.asender.replaceTrack(track); }
-        else if (!state.screen) { if (p.vsender) await p.vsender.replaceTrack(track); }
+      if (kind === 'audio' && presentationSharedTrack) {
+        await setPresentationAudio(presentationSharedTrack);
+      } else if (kind === 'audio') {
+        await setOutgoingAudio(track);
+      } else {
+        await setOutgoingVideo(track);
       }
       renderLocalTile();
       refreshDevices();
@@ -1334,7 +1669,10 @@
   $('opt-mirror').checked = prefs.mirror;
   $('opt-mirror').addEventListener('change', (e) => { prefs.mirror = e.target.checked; store.set('mirror', prefs.mirror ? '1' : '0'); renderLocalTile(); });
   $('opt-sound').checked = prefs.sound;
-  $('opt-sound').addEventListener('change', (e) => { prefs.sound = e.target.checked; store.set('sound', prefs.sound ? '1' : '0'); });
+  $('opt-sound').addEventListener('change', (e) => {
+    prefs.sound = e.target.checked; store.set('sound', prefs.sound ? '1' : '0');
+    if (!prefs.sound) { roomMusicOn = false; clearInterval(roomMusicTimer); roomMusicTimer = null; }
+  });
 
   // snap a group photo (collage of everyone's current frame)
   $('snap-photo').addEventListener('click', () => {
@@ -1506,7 +1844,7 @@
     const text = '🎲 ' + ICEBREAKERS[(Math.random() * ICEBREAKERS.length) | 0];
     ws.send(JSON.stringify({ type: 'chat', text })); appendChat(localName + ' (YOU)', text);
   });
-  const FILTERS = [['none', 'Normal'], ['grayscale(1) contrast(1.1)', 'Noir'], ['sepia(.9) contrast(1.05)', 'Old film'], ['hue-rotate(90deg) saturate(1.6)', 'Alien'], ['saturate(2.2) contrast(1.15)', 'Pop'], ['invert(1) hue-rotate(180deg)', 'Negative'], ['contrast(1.4) saturate(1.8) hue-rotate(-30deg)', 'Neon']];
+  const FILTERS = [['none', 'Normal'], ['grayscale(1) contrast(1.1)', 'Noir'], ['sepia(.9) contrast(1.05)', 'Old film'], ['hue-rotate(90deg) saturate(1.6)', 'Alien'], ['saturate(2.2) contrast(1.15)', 'Pop'], ['invert(1) hue-rotate(180deg)', 'Negative'], ['contrast(1.4) saturate(1.8) hue-rotate(-30deg)', 'Neon'], ['saturate(1.55) hue-rotate(-24deg) contrast(1.08)', 'Sunset glow'], ['blur(.35px) saturate(1.75) brightness(1.14)', 'Dreamcore'], ['contrast(1.45) saturate(1.35) hue-rotate(155deg)', 'Glitchwave']];
   function cycleFilter(tile) {
     const v = tile.querySelector('video'); if (!v) return;
     const i = ((Number(tile.dataset.filter || 0)) + 1) % FILTERS.length;
@@ -1519,8 +1857,16 @@
   buildThemePickers();
 
   // ---------- landing wiring ----------
+  let selectedRoomMode = 'normal';
+  document.querySelectorAll('[data-create-mode]').forEach((button) => button.addEventListener('click', () => {
+    selectedRoomMode = button.dataset.createMode === 'theater' ? 'theater' : 'normal';
+    document.querySelectorAll('[data-create-mode]').forEach((item) => {
+      item.classList.toggle('selected', item === button);
+      item.setAttribute('aria-pressed', String(item === button));
+    });
+  }));
   createButton.addEventListener('click', () => {
-    try { enterRoom(makeCode()); } catch (e) { setError(e.message || 'Could not create a room code.'); }
+    try { enterRoom(makeCode(), selectedRoomMode); } catch (e) { setError(e.message || 'Could not create a room code.'); }
   });
   joinButton.addEventListener('click', () => enterRoom($('room-code').value.toUpperCase().replace(/[^A-Z0-9]/g, '')));
   $('room-code').addEventListener('input', (e) => { e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8); });

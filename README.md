@@ -1,4 +1,4 @@
-# ROOM/05 — Peer-to-peer video rooms (v6.3 Free deployment)
+# ROOM/05 — Peer-to-peer video rooms (v6.7 Free deployment)
 
 ROOM/05 is a browser-based room for video, voice, chat, reactions and screen sharing. Calls use browser WebRTC connections between participants. The Node server serves the website and relays the small signaling messages needed to connect peers.
 
@@ -15,7 +15,8 @@ ROOM/05 is a browser-based room for video, voice, chat, reactions and screen sha
 - User accounts are stored in a separate PostgreSQL database (Neon), not in Render's local filesystem. This is required because a Render Free service has an ephemeral filesystem.
 - The session-signing secret is also stored in PostgreSQL so a service restart does not invalidate every session.
 - Username/password login remains part of ROOM/05 itself. Neon is only the database; it is not an external login or identity provider.
-- Existing site pages and room functionality are retained: up to five participants, peer-to-peer WebRTC media, chat, reactions, camera/microphone controls, screen sharing, reconnect handling, and the Terms & Conditions / Privacy Policy acceptance flow.
+- Existing account, legal and room functionality is retained. This version adds room-wide Normal / Theater layouts, shared local-video playback in Theater mode (where the browser supports media capture), separate camera and presentation video tracks, one-presenter-at-a-time coordination, additional camera filters, Aarti effects, and an original synthesized room beat.
+- Automatic video quality now reduces resolution, frame rate and per-peer bitrate as rooms grow; high manual presets are automatically capped in larger groups, and individual peer video bitrate adapts when packet loss is reported.
 
 ## Accounts and first-visit agreement
 
@@ -104,7 +105,9 @@ Open `http://localhost:3000`. Keep `.env` private; `.gitignore` excludes it.
 - Direct WebRTC video/audio, with server-relayed signaling.
 - Live chat and reactions; chat is not archived.
 - Camera, microphone, screen-share and device setup controls where browser support allows.
-- Reconnect handling, room-tab protection, theme options and adaptive video-quality presets.
+- Reconnect handling, room-tab protection, theme options, per-peer adaptive video quality, and room-wide Normal / Theater layout selection.
+- Theater mode keeps camera tiles in a bottom filmstrip while one selected local video or screen presentation occupies the main stage. The person presenting controls playback; a new presenter must wait for the current one to stop.
+- Extra reactions include an Aarti-style diya orbit and a synchronized original synthesized lo-fi loop. Filters remain local to each viewer.
 - Terms page at `/terms.html` and Privacy Policy at `/privacy.html`.
 
 ## Provider documentation
@@ -116,7 +119,8 @@ Open `http://localhost:3000`. Keep `.env` private; `.gitignore` excludes it.
 
 ## Important notes
 
-- Peer-to-peer call quality depends on each participant's upload speed and network.
+- Peer-to-peer mesh call quality depends on each participant's upload speed and network. Larger rooms automatically reduce camera resolution and bitrate, but this is still not an SFU architecture and cannot guarantee that every network can connect.
+- For users behind strict NATs or carrier-grade firewalls, configure a reliable TURN relay using `TURN_URL`, `TURN_USER`, and `TURN_PASS`. A proper SFU deployment would be the next architectural step for consistently smooth larger group calls; it is not included in this free Render package.
 - Screen sharing depends on browser support and may not work in some mobile browsers.
 - Anyone with a valid room code can attempt to join while a seat is available.
 - This ZIP does not contain your Neon database connection string or any other secret. Add secrets in Render's Environment settings.

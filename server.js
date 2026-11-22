@@ -21,7 +21,7 @@ const ROOT = __dirname;
 const TERMS_VERSION = '1.0';
 const PRIVACY_VERSION = '1.1';
 const SESSION_MAX_AGE = 30 * 24 * 60 * 60;
-const PUBLIC_FILES = ['index.html', 'style.css', 'auth.css', 'auth.js', 'main.js', 'legal.css', 'terms.html', 'privacy.html', 'favicon.svg'];
+const PUBLIC_FILES = ['index.html', 'style.css', 'auth.css', 'auth.js', 'main.js', 'polish.css', 'legal.css', 'terms.html', 'privacy.html', 'favicon.svg'];
 const MIME = {
   '.html': 'text/html; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
@@ -416,7 +416,9 @@ wss.on('connection', (ws) => {
       if (!/^[a-f0-9]{36}$/.test(sessionId)) return out(ws, { type: 'error', reason: 'bad-session' });
 
       let members = rooms.get(code);
-      if (!members) { members = new Map(); rooms.set(code, members); }
+      if (!members) { members = new Map(); members.roomMode = message.roomMode === 'theater' ? 'theater' : 'normal'; rooms.set(code, members); }
+      if (!members.roomMode) members.roomMode = members.size === 0 && message.roomMode === 'theater' ? 'theater' : 'normal';
+      const roomMode = members.roomMode === 'theater' ? 'theater' : 'normal';
       // A reconnect from the same browser tab reclaims its existing place.
       for (const [oldId, oldMember] of members) {
         if (oldMember.sessionId !== sessionId) continue;
@@ -435,8 +437,8 @@ wss.on('connection', (ws) => {
       const name = clean(message.name, 28) || 'Guest';
       const peers = Array.from(members, ([id, member]) => ({ id, name: member.name, state: member.state }));
       members.set(me, { ws, name, sessionId, state: { mic: true, cam: true, screen: false, hand: false } });
-      out(ws, { type: 'joined', id: me, peers });
-      members.forEach((member, id) => { if (id !== me) out(member.ws, { type: 'peer-joined', id: me, name }); });
+      out(ws, { type: 'joined', id: me, peers, roomMode });
+      members.forEach((member, id) => { if (id !== me) out(member.ws, { type: 'peer-joined', id: me, name, roomMode }); });
       return;
     }
     if (!room || !me) return;
@@ -449,7 +451,10 @@ wss.on('connection', (ws) => {
       const target = members.get(message.to);
       if (target) out(target.ws, { type: 'signal', from: me, data: message.data });
     } else if (message.type === 'state' && message.state && typeof message.state === 'object') {
-      self.state = { mic: !!message.state.mic, cam: !!message.state.cam, screen: !!message.state.screen, hand: !!message.state.hand };
+      const wantsPresentation = !!message.state.screen;
+      const activePresenter = wantsPresentation ? Array.from(members.entries()).find(([id, member]) => id !== me && member.state && member.state.screen) : null;
+      self.state = { mic: !!message.state.mic, cam: !!message.state.cam, screen: wantsPresentation && !activePresenter, hand: !!message.state.hand };
+      if (wantsPresentation && activePresenter) out(ws, { type: 'presentation-denied', name: activePresenter[1].name });
       members.forEach((peer, id) => { if (id !== me) out(peer.ws, { type: 'state', id: me, state: self.state }); });
     } else if (message.type === 'chat') {
       const text = clean(message.text, 400);

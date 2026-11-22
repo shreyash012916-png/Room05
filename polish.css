@@ -1088,3 +1088,150 @@ body.theater-immersive-active { overflow:hidden !important; }
   .landing, #call-screen:not(.theater-mode) { animation:none !important; }
   .reaction-grid button { transition:none; }
 }
+
+/* ROOM/05 v6.12.1 — named theme cards, full-section ambience and persistent reaction access. */
+.theme-pop {
+  width: min(340px, calc(100vw - 20px));
+  max-height: min(76vh, 680px);
+  overflow: hidden;
+  padding: 12px;
+  z-index: 2147482000 !important;
+  background: color-mix(in srgb, var(--paper-2) 97%, transparent);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+.theme-swatches {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px !important;
+  max-height: min(64vh, 570px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 3px 5px 3px 2px;
+}
+.theme-chip {
+  display: flex !important;
+  align-items: center;
+  gap: 8px;
+  width: 100% !important;
+  min-width: 0;
+  min-height: 47px;
+  height: auto !important;
+  padding: 6px 8px;
+  border: 1px solid var(--line) !important;
+  border-radius: 4px !important;
+  outline: none;
+  background: var(--paper) !important;
+  color: var(--ink);
+  text-align: left;
+  box-shadow: none;
+  transition: transform .16s ease, border-color .16s ease, background .16s ease;
+}
+.theme-chip:hover, .theme-chip:focus-visible {
+  transform: translateY(-1px);
+  border-color: var(--red) !important;
+  background: var(--paper-2) !important;
+  outline: 2px solid color-mix(in srgb, var(--red) 30%, transparent);
+  outline-offset: 1px;
+}
+.theme-chip[aria-pressed="true"] {
+  border-color: var(--red) !important;
+  box-shadow: inset 0 0 0 1px var(--red) !important;
+}
+.theme-chip-swatch {
+  display: block;
+  flex: 0 0 25px;
+  width: 25px;
+  height: 25px;
+  border: 1px solid color-mix(in srgb, var(--ink) 24%, transparent);
+  border-radius: 3px;
+  background: linear-gradient(135deg, var(--c1, #888) 0 52%, var(--c2, #ddd) 52% 100%);
+  box-shadow: 2px 2px 0 color-mix(in srgb, var(--ink) 16%, transparent);
+}
+.theme-chip-copy { display: grid; min-width: 0; gap: 3px; }
+.theme-chip-copy strong { color: var(--ink); font: 700 9px var(--mono); letter-spacing: .035em; line-height: 1.2; }
+.theme-chip-copy small { color: var(--muted); font: 8px var(--mono); line-height: 1.2; white-space: nowrap; }
+.theme-pop .theme-label { display: block; padding: 2px 2px 8px; }
+.settings-card .theme-swatches { max-height: 30vh; }
+
+/* Theme atmosphere is painted into each major section, not only the landing hero. */
+.theme-scene { position: relative; isolation: isolate; }
+.theme-scene::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  pointer-events: none;
+  background-image: var(--theme-atmosphere, none);
+  background-size: 180% 180%;
+  background-position: 0% 50%;
+  opacity: .48;
+  animation: theme-scene-drift var(--theme-animation-duration, 32s) ease-in-out infinite alternate;
+}
+@keyframes theme-scene-drift {
+  from { background-position: 0% 35%; }
+  to { background-position: 100% 70%; }
+}
+:root[data-theme="cream"] { --theme-atmosphere: radial-gradient(ellipse at 12% 0%, rgba(170,135,89,.13), transparent 48%), radial-gradient(ellipse at 100% 100%, rgba(217,255,0,.08), transparent 44%); --theme-animation-duration: 38s; }
+:root[data-theme="midnight"] { --theme-atmosphere: radial-gradient(ellipse at 80% 5%, rgba(217,255,0,.10), transparent 46%), radial-gradient(ellipse at 5% 100%, rgba(94,125,110,.16), transparent 50%); --theme-animation-duration: 42s; }
+:root[data-theme="cyber"] { --theme-atmosphere: repeating-linear-gradient(90deg, rgba(255,43,214,.035) 0 1px, transparent 1px 34px), repeating-linear-gradient(0deg, rgba(101,239,255,.035) 0 1px, transparent 1px 34px), radial-gradient(ellipse at 80% 15%, rgba(255,43,214,.18), transparent 52%); --theme-animation-duration: 18s; }
+:root[data-theme="terminal"] { --theme-atmosphere: repeating-linear-gradient(0deg, rgba(57,255,106,.045) 0 1px, transparent 1px 5px), radial-gradient(ellipse at 50% 0%, rgba(57,255,106,.14), transparent 60%); --theme-animation-duration: 24s; }
+:root[data-theme="vapor"] { --theme-atmosphere: radial-gradient(ellipse at 8% 85%, rgba(255,113,206,.2), transparent 45%), linear-gradient(135deg, rgba(97,68,255,.12), transparent 52%), radial-gradient(ellipse at 90% 0%, rgba(255,188,240,.15), transparent 50%); --theme-animation-duration: 22s; }
+:root[data-theme="aurora"] { --theme-atmosphere: radial-gradient(ellipse at 5% 80%, rgba(92,255,210,.2), transparent 46%), radial-gradient(ellipse at 90% 10%, rgba(94,165,255,.17), transparent 50%), linear-gradient(110deg, transparent, rgba(92,255,210,.055), transparent); --theme-animation-duration: 34s; }
+:root[data-theme="grape"] { --theme-atmosphere: radial-gradient(ellipse at 15% 0%, rgba(197,155,255,.19), transparent 50%), radial-gradient(ellipse at 90% 95%, rgba(106,65,146,.2), transparent 52%); --theme-animation-duration: 30s; }
+:root[data-theme="sunset"] { --theme-atmosphere: radial-gradient(ellipse at 90% 0%, rgba(255,179,71,.2), transparent 48%), radial-gradient(ellipse at 0% 100%, rgba(217,83,77,.18), transparent 52%); --theme-animation-duration: 28s; }
+:root[data-theme="bubblegum"] { --theme-atmosphere: radial-gradient(circle at 14% 20%, rgba(255,139,209,.2) 0 2px, transparent 3px), radial-gradient(circle at 80% 70%, rgba(255,139,209,.18) 0 3px, transparent 4px), radial-gradient(ellipse at 80% 0%, rgba(255,139,209,.18), transparent 50%); --theme-animation-duration: 25s; }
+:root[data-theme="matcha"] { --theme-atmosphere: radial-gradient(ellipse at 10% 10%, rgba(157,255,106,.18), transparent 48%), radial-gradient(ellipse at 90% 90%, rgba(91,125,57,.15), transparent 46%); --theme-animation-duration: 36s; }
+:root[data-theme="gameboy"] { --theme-atmosphere: repeating-linear-gradient(0deg, rgba(83,107,45,.035) 0 1px, transparent 1px 4px), radial-gradient(ellipse at 50% 0%, rgba(139,172,15,.16), transparent 58%); --theme-animation-duration: 22s; }
+:root[data-theme="theater"] { --theme-atmosphere: radial-gradient(ellipse at 50% 0%, rgba(214,172,112,.22), transparent 50%), radial-gradient(ellipse at 0% 100%, rgba(109,20,37,.2), transparent 48%); --theme-animation-duration: 28s; }
+:root[data-theme="arcade"] { --theme-atmosphere: repeating-linear-gradient(0deg, rgba(101,239,255,.04) 0 1px, transparent 1px 5px), linear-gradient(135deg, rgba(255,75,216,.16), transparent 42%), radial-gradient(ellipse at 80% 20%, rgba(101,239,255,.17), transparent 48%); --theme-animation-duration: 18s; }
+:root[data-theme="ocean"] { --theme-atmosphere: radial-gradient(ellipse at 15% 90%, rgba(34,159,190,.2), transparent 48%), radial-gradient(ellipse at 85% 5%, rgba(87,216,236,.17), transparent 45%), linear-gradient(130deg, rgba(5,28,46,.08), rgba(38,126,154,.14)); --theme-animation-duration: 32s; }
+:root[data-theme="sakura"] { --theme-atmosphere: radial-gradient(circle at 12% 18%, rgba(255,154,203,.16) 0 2px, transparent 3px), radial-gradient(circle at 76% 34%, rgba(255,194,222,.15) 0 3px, transparent 4px), radial-gradient(ellipse at 80% 0%, rgba(255,121,183,.17), transparent 48%), radial-gradient(ellipse at 0% 100%, rgba(139,48,99,.2), transparent 48%); --theme-animation-duration: 24s; }
+:root[data-theme="cosmic"] { --theme-atmosphere: radial-gradient(circle at 16% 22%, rgba(255,255,255,.3) 0 1px, transparent 2px), radial-gradient(circle at 78% 68%, rgba(195,167,255,.22) 0 1px, transparent 2px), radial-gradient(ellipse at 50% 0%, rgba(162,138,255,.2), transparent 55%), radial-gradient(ellipse at 90% 100%, rgba(89,62,166,.17), transparent 46%); --theme-animation-duration: 36s; }
+
+/* Reactions stay on the persistent bottom toolbar and float above every room layer. */
+.quick-reactions-label { color: var(--muted); font: 8px var(--mono); letter-spacing: .06em; }
+.control-dock .reaction-dock-launcher { min-width: 60px; border-color: color-mix(in srgb, var(--red) 65%, var(--line)); }
+.control-dock .reaction-dock-launcher .control-icon { color: var(--red); }
+.control-dock .reaction-dock-launcher[aria-expanded="true"] { border-color: var(--red); box-shadow: inset 0 0 0 1px var(--red), 3px 3px 0 var(--red); }
+#call-screen.reaction-picker-open { overflow: visible !important; }
+#call-screen #reaction-picker { position: fixed !important; z-index: 2147483000 !important; }
+@media (max-width: 650px) {
+  body.in-call #call-screen .control-dock { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  body.in-call #call-screen .reaction-dock-launcher { min-width: 0; }
+  .theme-pop { width: min(330px, calc(100vw - 16px)); right: -42px; }
+  .theme-swatches { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .theme-scene::before { animation: none !important; }
+  .theme-chip { transition: none !important; }
+}
+/* Keep the reaction action in the persistent meeting dock, including on phones. */
+.quick-reactions-label { font-size: 7px; }
+.control-dock .reaction-dock-launcher { flex: 0 0 auto; }
+@media (min-width: 651px) {
+  .call-footer .control-dock { flex-wrap: nowrap; }
+}
+@media (max-width: 650px) {
+  body.in-call #call-screen .call-footer { gap: 6px; }
+  body.in-call #call-screen .call-footer-left,
+  body.in-call #call-screen .call-footer-right { display: none; }
+  body.in-call #call-screen .control-dock { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 4px; }
+  body.in-call #call-screen .control-dock .control-button,
+  body.in-call #call-screen .control-dock .leave-button { min-width: 0; width: 100%; }
+  body.in-call #call-screen .control-dock .control-label { font-size: 7px; }
+  .theme-pop { right: 0; }
+}
+.theater-controls .theater-immersive-button {
+  border: 1px solid #d6ac70;
+  background: linear-gradient(135deg, #6d1425, #24121d);
+  color: #fff1df;
+  box-shadow: 3px 3px 0 rgba(0,0,0,.42);
+  font-weight: 800;
+}
+.theater-controls .theater-immersive-button:hover,
+.theater-controls .theater-immersive-button[aria-pressed="true"] {
+  background: #d6ac70;
+  color: #171016;
+  border-color: #f0d5ac;
+}

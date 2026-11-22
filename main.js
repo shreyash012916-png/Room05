@@ -169,9 +169,23 @@
   const prefs = { quality: store.get('quality', 'auto'), mirror: store.get('mirror', '1') === '1', sound: store.get('sound', '1') === '1' };
 
   const THEMES = [
-    ['auto', 'Auto'], ['cream', 'Cream'], ['midnight', 'Midnight'], ['cyber', 'Cyber'], ['terminal', 'Terminal'], ['vapor', 'Vapor'],
-    ['aurora', 'Aurora'], ['grape', 'Grape'], ['sunset', 'Sunset'], ['bubblegum', 'Bubblegum'], ['matcha', 'Matcha'], ['gameboy', 'Gameboy'],
-    ['theater', 'Theater'], ['arcade', 'Arcade'], ['ocean', 'Ocean'], ['sakura', 'Sakura'], ['cosmic', 'Cosmic']
+    ['auto', 'Auto', 'System match'],
+    ['cream', 'Cream', 'Warm minimal'],
+    ['midnight', 'Midnight', 'Quiet dark'],
+    ['cyber', 'Cyber', 'Neon pulse'],
+    ['terminal', 'Terminal', 'Retro matrix'],
+    ['vapor', 'Vapor', 'Retro glow'],
+    ['aurora', 'Aurora', 'Northern glow'],
+    ['grape', 'Grape', 'Velvet dusk'],
+    ['sunset', 'Sunset', 'Golden hour'],
+    ['bubblegum', 'Bubblegum', 'Pink pop'],
+    ['matcha', 'Matcha', 'Soft green'],
+    ['gameboy', 'Gameboy', 'Pixel retro'],
+    ['theater', 'Theater', 'Cinema lights'],
+    ['arcade', 'Arcade', 'Neon arcade'],
+    ['ocean', 'Ocean', 'Deep blue'],
+    ['sakura', 'Sakura', 'Cherry bloom'],
+    ['cosmic', 'Cosmic', 'Starfield glow']
   ];
   const THEME_COLORS = { cream: ['#e9e6dc', '#d9ff00'], midnight: ['#0f110e', '#d9ff00'], cyber: ['#07060d', '#ff2bd6'], terminal: ['#020a04', '#39ff6a'], vapor: ['#3b1170', '#ff71ce'], aurora: ['#0a3a3c', '#5cffd2'], grape: ['#130e1f', '#c59bff'], sunset: ['#1a0e12', '#ffb347'], bubblegum: ['#ffe0ed', '#ff8bd1'], matcha: ['#dce9d2', '#9dff6a'], gameboy: ['#c4cfa1', '#8bac0f'], theater: ['#100b11', '#d6ac70'], arcade: ['#09051a', '#65efff'], ocean: ['#061c2b', '#57d8ec'], sakura: ['#2b1223', '#ff9acb'], cosmic: ['#100b25', '#a28aff'] };
   const DARK_THEMES = new Set(['midnight', 'cyber', 'terminal', 'vapor', 'aurora', 'grape', 'sunset', 'theater', 'arcade', 'ocean', 'sakura', 'cosmic']);
@@ -194,25 +208,56 @@
   }
   function buildThemePickers() {
     document.querySelectorAll('.theme-swatches').forEach((box) => {
-      box.innerHTML = '';
-      THEMES.forEach(([id, label]) => {
-        const b = document.createElement('button');
-        b.type = 'button'; b.className = 'theme-chip' + (id === 'auto' ? ' auto' : ''); b.dataset.theme = id;
-        b.title = label; b.setAttribute('aria-label', label + ' theme');
+      // Keep the picker self-healing: render the full list if markup is empty,
+      // then bind all controls. Each choice has a visible name and short hint.
+      if (!box.querySelector('.theme-chip')) {
+        THEMES.forEach(([id, label, description]) => {
+          const b = document.createElement('button');
+          b.type = 'button'; b.className = 'theme-chip' + (id === 'auto' ? ' auto' : ''); b.dataset.theme = id;
+          b.innerHTML = '<span class="theme-chip-swatch" aria-hidden="true"></span><span class="theme-chip-copy"><strong></strong><small></small></span>';
+          b.querySelector('strong').textContent = label;
+          b.querySelector('small').textContent = description;
+          box.appendChild(b);
+        });
+      }
+      box.querySelectorAll('.theme-chip').forEach((b) => {
+        const theme = THEMES.find((item) => item[0] === b.dataset.theme);
+        if (!theme) { b.remove(); return; }
+        const [id, label, description] = theme;
+        b.title = label + ' — ' + description;
+        b.setAttribute('aria-label', label + ' theme: ' + description);
+        if (!b.querySelector('.theme-chip-swatch')) {
+          b.innerHTML = '<span class="theme-chip-swatch" aria-hidden="true"></span><span class="theme-chip-copy"><strong></strong><small></small></span>';
+        }
+        b.querySelector('strong').textContent = label;
+        b.querySelector('small').textContent = description;
         if (THEME_COLORS[id]) { b.style.setProperty('--c1', THEME_COLORS[id][0]); b.style.setProperty('--c2', THEME_COLORS[id][1]); }
-        b.addEventListener('click', () => { applyTheme(id); buzz(); });
-        box.appendChild(b);
+        else { b.style.setProperty('--c1', '#8b8b82'); b.style.setProperty('--c2', '#d9ff00'); }
+        b.addEventListener('click', () => {
+          applyTheme(id);
+          buzz();
+          const pop = b.closest('.theme-pop');
+          if (pop) { pop.classList.add('hidden'); const toggle = pop.parentElement.querySelector('.theme-toggle'); if (toggle) toggle.setAttribute('aria-expanded', 'false'); }
+        });
       });
     });
     applyTheme(store.get('theme', 'auto'), false);
     document.querySelectorAll('.mode-toggle').forEach((b) => b.addEventListener('click', toggleMode));
     document.querySelectorAll('.theme-wrap').forEach((wrap) => {
       const btn = wrap.querySelector('.theme-toggle'); const pop = wrap.querySelector('.theme-pop');
+      if (!btn || !pop || btn.dataset.themeBound === '1') return;
+      btn.dataset.themeBound = '1';
       btn.addEventListener('click', (e) => { e.stopPropagation(); const open = pop.classList.toggle('hidden') === false; btn.setAttribute('aria-expanded', String(open)); });
     });
-    document.addEventListener('click', (e) => { document.querySelectorAll('.theme-pop').forEach((p) => { if (!p.contains(e.target)) p.classList.add('hidden'); }); });
-    if (window.matchMedia) matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { if (store.get('theme', 'auto') === 'auto') applyTheme('auto'); });
+    document.addEventListener('click', (e) => { document.querySelectorAll('.theme-pop').forEach((p) => { if (!p.contains(e.target)) { p.classList.add('hidden'); const toggle = p.parentElement.querySelector('.theme-toggle'); if (toggle) toggle.setAttribute('aria-expanded', 'false'); } }); });
+    if (window.matchMedia) {
+      const mq = matchMedia('(prefers-color-scheme: dark)');
+      if (mq.addEventListener) mq.addEventListener('change', () => { if (store.get('theme', 'auto') === 'auto') applyTheme('auto'); });
+      else if (mq.addListener) mq.addListener(() => { if (store.get('theme', 'auto') === 'auto') applyTheme('auto'); });
+    }
   }
+
+  buildThemePickers();
 
   // Voice playback is routed through Web Audio, unlocked by the user's join tap.
   // This avoids relying on an unmuted remote <video> autoplaying on Android.
@@ -999,15 +1044,27 @@
     try {
       const q = qualityFor(peers.size);
       const scale = peer && Number.isFinite(peer.bitrateScale) ? peer.bitrateScale : 1;
-      const presentationBitrate = peers.size >= 3 ? 480000 : (peers.size === 2 ? 720000 : 1100000);
+      const presentationBitrate = peers.size >= 3 ? 7000000 : (peers.size === 2 ? 9000000 : 12000000);
       const params = sender.getParameters();
       if (!params.encodings || !params.encodings.length) params.encodings = [{}];
       params.encodings[0].maxBitrate = Math.max(90000, Math.round((presentation ? presentationBitrate : q.bitrate) * (presentation ? 1 : scale)));
-      params.encodings[0].maxFramerate = presentation ? (peers.size >= 3 ? 15 : 20) : Math.max(8, Math.round(q.fps * Math.sqrt(scale)));
-      params.encodings[0].priority = presentation ? 'medium' : 'low';
-      params.encodings[0].networkPriority = presentation ? 'medium' : 'low';
-      params.degradationPreference = 'balanced';
-      sender.setParameters(params).catch(() => {});
+      params.encodings[0].maxFramerate = presentation ? 30 : Math.max(8, Math.round(q.fps * Math.sqrt(scale)));
+      if (presentation) params.encodings[0].scaleResolutionDownBy = 1;
+      params.encodings[0].priority = presentation ? 'high' : 'low';
+      params.encodings[0].networkPriority = presentation ? 'high' : 'low';
+      params.degradationPreference = presentation ? 'maintain-resolution' : 'balanced';
+      sender.setParameters(params).catch(() => {
+        // Some mobile engines reject optional priority fields. Retry with the
+        // core quality limits so an unsupported hint cannot cancel the bitrate.
+        try {
+          const fallback = sender.getParameters();
+          if (!fallback.encodings || !fallback.encodings.length) fallback.encodings = [{}];
+          fallback.encodings[0].maxBitrate = presentation ? presentationBitrate : Math.max(90000, Math.round(q.bitrate * scale));
+          fallback.encodings[0].maxFramerate = presentation ? 30 : Math.max(8, Math.round(q.fps * Math.sqrt(scale)));
+          if (presentation) fallback.degradationPreference = 'maintain-resolution';
+          sender.setParameters(fallback).catch(() => {});
+        } catch (_) {}
+      });
     } catch (_) {}
   }
   function tuneAudioSender(sender) {
@@ -1743,7 +1800,7 @@
       const videoTrack = captured.getVideoTracks()[0];
       if (!videoTrack) throw new Error('No video track was created from this file.');
       screenStream = captured;
-      videoTrack.contentHint = 'motion';
+      videoTrack.contentHint = 'detail';
       videoTrack.onended = () => { if (theaterMediaActive) stopTheaterMedia(); };
       state.screen = true;
       await setPresentationVideo(videoTrack);
@@ -1785,10 +1842,10 @@
     try {
       // Must run directly from the user's click; the browser owns the source picker.
       try {
-        captured = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: { ideal: 20 } }, audio: true });
+        captured = await navigator.mediaDevices.getDisplayMedia({ video: { width: { ideal: 3840 }, height: { ideal: 2160 }, frameRate: { ideal: 30 } }, audio: true });
       } catch (captureError) {
         if (captureError && ['NotSupportedError', 'TypeError'].includes(captureError.name)) {
-          captured = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: { ideal: 20 } }, audio: false });
+          captured = await navigator.mediaDevices.getDisplayMedia({ video: { width: { ideal: 3840 }, height: { ideal: 2160 }, frameRate: { ideal: 30 } }, audio: false });
         } else throw captureError;
       }
       const track = captured.getVideoTracks()[0];
@@ -1796,6 +1853,7 @@
       screenStream = captured;
       theaterMediaActive = false;
       try { track.contentHint = 'detail'; } catch (_) {}
+      if (track.applyConstraints) track.applyConstraints({ width: { ideal: 3840 }, height: { ideal: 2160 }, frameRate: { ideal: 30 } }).catch(() => {});
       track.onended = () => { if (state.screen && screenStream === captured) stopScreenShare(); };
       state.screen = true;
       await setPresentationVideo(track);
@@ -2004,7 +2062,7 @@
     if (!theaterImmersiveBtn) return;
     const active = callScreen.classList.contains('theater-immersive');
     theaterImmersiveBtn.setAttribute('aria-pressed', String(active));
-    theaterImmersiveBtn.textContent = active ? '⤢ EXIT IMMERSIVE' : '⛶ IMMERSIVE VIEW';
+    theaterImmersiveBtn.textContent = active ? '⤢ EXIT THEATER' : '⛶ ENTER FULL THEATER';
     theaterImmersiveBtn.title = active ? 'Return to standard theater layout' : 'Expand theater to fill the screen';
   }
   async function toggleTheaterImmersive() {
@@ -2315,11 +2373,15 @@
   const reactionLauncher = $('reaction-launcher');
   const reactionPicker = $('reaction-picker');
   const reactionPickerClose = $('reaction-picker-close');
+  // Keep the floating palette inside the fullscreen root so it remains visible
+  // during native fullscreen, but move it to the top of that root's children.
+  if (reactionPicker && callScreen) callScreen.appendChild(reactionPicker);
   function setReactionPickerOpen(open) {
     if (!reactionPicker || !reactionLauncher) return;
     reactionPicker.classList.toggle('hidden', !open);
     reactionPicker.setAttribute('aria-hidden', String(!open));
     reactionLauncher.setAttribute('aria-expanded', String(open));
+    if (callScreen) callScreen.classList.toggle('reaction-picker-open', !!open);
     if (open) {
       const anchor = reactionLauncher.getBoundingClientRect();
       const panel = reactionPicker.getBoundingClientRect();
@@ -2345,6 +2407,9 @@
     if (reactionPicker && !reactionPicker.classList.contains('hidden') && !reactionPicker.contains(event.target) && !reactionLauncher?.contains(event.target)) setReactionPickerOpen(false);
   });
   window.addEventListener('resize', () => {
+    if (reactionPicker && !reactionPicker.classList.contains('hidden')) setReactionPickerOpen(true);
+  }, { passive: true });
+  window.addEventListener('scroll', () => {
     if (reactionPicker && !reactionPicker.classList.contains('hidden')) setReactionPickerOpen(true);
   }, { passive: true });
   document.querySelectorAll('[data-reaction]').forEach((button) => {
@@ -2373,8 +2438,6 @@
     toast('Filter: ' + FILTERS[i][1] + ' (only you see this)');
   }
   window.__room05Filter = cycleFilter;
-
-  buildThemePickers();
 
   // ---------- landing wiring ----------
   let selectedRoomMode = 'normal';

@@ -1,4 +1,13 @@
-# ROOM/05 v6.11.0
+# ROOM/05 v6.12.1
+
+## v6.12.1 visible reactions, labelled animated themes and presentation fidelity
+- Moved the room reaction launcher into the persistent bottom control dock; its 18-option picker is a high-layer overlay that remains above participant video and works in desktop and mobile layouts.
+- Theme pickers now show all 17 named choices as labelled cards with short one-to-two-word vibe descriptions (for example, Theater — Cinema lights). Descriptions are visible and also available on hover/focus.
+- Added animated atmosphere overlays to the major landing, room, settings, legal and supporting sections so theme choices style the full interface, not just accent colors.
+- Kept the Theater room selector on room creation and made the adjacent button next to PRESENT APP / SCREEN explicit as ENTER FULL THEATER.
+- Screen/app presentation requests up to 4K at 30 fps where supported and prioritizes detail-preserving encoding with 7–12 Mbps sender targets per peer. A compatibility fallback retries core sender limits if a browser rejects optional priority hints.
+- Cache-busted the updated HTML/CSS/JavaScript references to ensure browsers fetch the changed UI.
+
 
 ## v6.11.0 cinema auditorium and meeting refinements
 - Theater mode now uses a full cinematic auditorium ambience with a large shared screen, red velvet-inspired curtains, warm aisle lighting, and a row of participant video tiles styled as cinema seats. The participant strip remains compact so the shared movie/screen is the focus.

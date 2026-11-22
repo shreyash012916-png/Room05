@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" id="meta-theme" content="#e9e6dc" />
-    <script>try{var t=localStorage.getItem("room05-theme")||"auto";if(t==="auto")t=matchMedia("(prefers-color-scheme: dark)").matches?"midnight":"cream";document.documentElement.dataset.theme=t;document.documentElement.dataset.mode=/^(midnight|grape|sunset|cyber|terminal|vapor|aurora)$/.test(t)?"dark":"light";}catch(e){}</script>
+    <script>try{var t=localStorage.getItem("room05-theme")||"auto";if(t==="auto")t=matchMedia("(prefers-color-scheme: dark)").matches?"midnight":"cream";document.documentElement.dataset.theme=t;document.documentElement.dataset.mode=/^(midnight|grape|sunset|cyber|terminal|vapor|aurora|theater|arcade|ocean|sakura|cosmic)$/.test(t)?"dark":"light";}catch(e){}</script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Manrope:wght@400;500;600;700;800&display=swap" />
@@ -15,9 +15,9 @@
     <script type="application/ld+json">{"@context":"https://schema.org","@type":"WebSite","name":"ROOM/05","description":"Private peer-to-peer video rooms for your circle.","creator":{"@type":"Person","name":"Shreyash"}}</script>
     <title>ROOM/05 — Keep your circle close</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <link rel="stylesheet" href="/style.css?v=6.9.3" />
+    <link rel="stylesheet" href="/style.css?v=6.12.0" />
     <link rel="stylesheet" href="/auth.css?v=1.4.0" />
-    <link rel="stylesheet" href="/polish.css?v=6.11.0" />
+    <link rel="stylesheet" href="/polish.css?v=6.12.0" />
   </head>
   <body class="auth-pending">
     <div class="grain" aria-hidden="true"></div>
@@ -115,7 +115,7 @@
         </div>
 
         <div class="ticker-band" aria-label="Features">
-          <div class="ticker-track"><span>NO DOWNLOADS</span><b>✳</b><span>UP TO FIVE FRIENDS</span><b>✳</b><span>VIDEO / VOICE / CHAT</span><b>✳</b><span>NO RECORDING</span><b>✳</b><span>6 THEMES</span><b>✳</b><span>SNAP + HYPE</span><b>✳</b><span>NO DOWNLOADS</span><b>✳</b></div>
+          <div class="ticker-track"><span>NO DOWNLOADS</span><b>✳</b><span>UP TO FIVE FRIENDS</span><b>✳</b><span>VIDEO / VOICE / CHAT</span><b>✳</b><span>NO RECORDING</span><b>✳</b><span>16 THEMES + AUTO</span><b>✳</b><span>SNAP + HYPE</span><b>✳</b><span>NO DOWNLOADS</span><b>✳</b></div>
         </div>
 
         <section class="how-section" id="how-it-works">
@@ -139,10 +139,10 @@
         <div class="call-body">
           <main class="stage-area">
             <div class="stage-heading"><div><span class="stage-kicker">THE HANGOUT</span><h2>In good company<span class="heading-period">.</span></h2></div><div class="stage-count"><strong id="participant-count">01</strong><span>/ 05<br />CONNECTED</span></div></div>
-            <div class="theater-controls hidden" id="theater-controls"><button class="theater-media-button" id="choose-theater-media" type="button">🎬 CHOOSE VIDEO</button><button class="theater-media-button theater-share-button" id="share-app-screen" type="button">▣ PRESENT APP / SCREEN</button><input id="theater-media-file" type="file" accept="video/*" hidden /><span>One big shared screen for everyone. Choose a movie file or present a screen/app where your browser supports it · the presenter controls playback</span></div>
+            <div class="theater-controls hidden" id="theater-controls"><button class="theater-media-button" id="choose-theater-media" type="button">🎬 CHOOSE VIDEO</button><button class="theater-media-button theater-share-button" id="share-app-screen" type="button">▣ PRESENT APP / SCREEN</button><button class="theater-media-button theater-immersive-button" id="theater-immersive-toggle" type="button" aria-pressed="false">⛶ IMMERSIVE VIEW</button><input id="theater-media-file" type="file" accept="video/*" hidden /><span>Choose a movie file or present a screen/app where your browser supports it · the presenter controls playback</span></div>
             <div class="theater-stage hidden" id="theater-stage"><video id="theater-stage-video" playsinline webkit-playsinline></video><div class="theater-empty" id="theater-empty"><span>ROOM/05 CINEMA</span><strong>WELCOME TO THE SHOW.</strong><p>Choose a movie or present a screen. Your friends take their seats below.</p></div><div class="theater-live-pill">ROOM SCREEN</div></div>
             <div class="video-grid" id="video-grid" aria-live="polite"></div>
-            <div class="stage-bottomline"><span><i class="signal-bars"><b></b><b></b><b></b></i> PRIVATE CONNECTION</span><div class="quick-reactions"><span>DROP A REACTION</span><button type="button" data-reaction="🔥" aria-label="Fire">🔥</button><button type="button" data-reaction="💀" aria-label="Dead">💀</button><button type="button" data-reaction="😭" aria-label="Crying laughing">😭</button><button type="button" data-reaction="✨" aria-label="Sparkles">✨</button><button type="button" data-reaction="❤️" aria-label="Heart">❤️</button><button type="button" data-reaction="🎉" aria-label="Hype">🎉</button><button type="button" data-reaction="🗿" aria-label="Moyai">🗿</button><button type="button" data-reaction="🫡" aria-label="Salute">🫡</button><button type="button" data-reaction="💅" aria-label="Slay">💅</button><button type="button" data-reaction="🫶" aria-label="Love this">🫶</button><button type="button" data-reaction="👀" aria-label="Eyes on this">👀</button><button type="button" data-reaction="🚀" aria-label="Hype launch">🚀</button><button type="button" data-reaction="🤡" aria-label="Clown moment">🤡</button><button type="button" data-reaction="🥹" aria-label="Wholesome">🥹</button><button type="button" data-reaction="🪩" aria-label="Party mode" title="Party mode for everyone">🪩</button><button type="button" data-reaction="🪔" aria-label="Aarti mode" title="Aarti mode for the room">🪔</button><button type="button" data-reaction="🎵" aria-label="Room music" title="Toggle the original room beat">🎵</button><button type="button" data-reaction="📢" aria-label="Airhorn" title="Airhorn">📢</button></div><span>YOUR CAMERA, YOUR CALL.</span></div>
+            <div class="stage-bottomline"><span><i class="signal-bars"><b></b><b></b><b></b></i> PRIVATE CONNECTION</span><div class="quick-reactions"><button class="reaction-launcher" id="reaction-launcher" type="button" aria-expanded="false" aria-controls="reaction-picker"><span aria-hidden="true">✳</span><b>REACT</b><i>＋</i></button></div><span>YOUR CAMERA, YOUR CALL.</span></div>
           </main>
 
           <aside class="side-panel hidden" id="side-panel">
@@ -155,6 +155,16 @@
               <div class="chat-footnote">BE KIND. THIS CHAT IS LIVE ONLY.</div>
             </div>
           </aside>
+        </div>
+
+        <div class="reaction-picker hidden" id="reaction-picker" role="dialog" aria-label="Room reactions" aria-hidden="true">
+          <div class="reaction-picker-head"><div><span>ROOM/05 / QUICK REACTIONS</span><strong>Pick the vibe.</strong></div><button type="button" id="reaction-picker-close" aria-label="Close reactions">×</button></div>
+          <div class="reaction-grid">
+            <button type="button" data-reaction="🔥" aria-label="Fire">🔥</button><button type="button" data-reaction="💀" aria-label="Dead">💀</button><button type="button" data-reaction="😭" aria-label="Crying laughing">😭</button><button type="button" data-reaction="✨" aria-label="Sparkles">✨</button><button type="button" data-reaction="❤️" aria-label="Heart">❤️</button><button type="button" data-reaction="🎉" aria-label="Hype">🎉</button>
+            <button type="button" data-reaction="🗿" aria-label="Moyai">🗿</button><button type="button" data-reaction="🫡" aria-label="Salute">🫡</button><button type="button" data-reaction="💅" aria-label="Slay">💅</button><button type="button" data-reaction="🫶" aria-label="Love this">🫶</button><button type="button" data-reaction="👀" aria-label="Eyes on this">👀</button><button type="button" data-reaction="🚀" aria-label="Hype launch">🚀</button>
+            <button type="button" data-reaction="🤡" aria-label="Clown moment">🤡</button><button type="button" data-reaction="🥹" aria-label="Wholesome">🥹</button><button type="button" data-reaction="🪩" aria-label="Party mode" title="Party mode for everyone">🪩</button><button type="button" data-reaction="🪔" aria-label="Aarti mode" title="Aarti mode for the room">🪔</button><button type="button" data-reaction="🎵" aria-label="Room music" title="Toggle the original room beat">🎵</button><button type="button" data-reaction="📢" aria-label="Airhorn" title="Airhorn">📢</button>
+          </div>
+          <div class="reaction-picker-foot">ONE ROOM. ONE REACTION AT A TIME.</div>
         </div>
 
         <div class="call-footer">
@@ -196,6 +206,6 @@
     <div class="reaction-floats" id="reaction-floats" aria-hidden="true"></div>
     <div id="audio-rack" aria-hidden="true"></div>
     <script src="/auth.js?v=1.2.1" defer></script>
-    <script src="/main.js?v=6.11.0" defer></script>
+    <script src="/main.js?v=6.12.0" defer></script>
   </body>
 </html>

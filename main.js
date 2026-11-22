@@ -170,10 +170,11 @@
 
   const THEMES = [
     ['auto', 'Auto'], ['cream', 'Cream'], ['midnight', 'Midnight'], ['cyber', 'Cyber'], ['terminal', 'Terminal'], ['vapor', 'Vapor'],
-    ['aurora', 'Aurora'], ['grape', 'Grape'], ['sunset', 'Sunset'], ['bubblegum', 'Bubblegum'], ['matcha', 'Matcha'], ['gameboy', 'Gameboy']
+    ['aurora', 'Aurora'], ['grape', 'Grape'], ['sunset', 'Sunset'], ['bubblegum', 'Bubblegum'], ['matcha', 'Matcha'], ['gameboy', 'Gameboy'],
+    ['theater', 'Theater'], ['arcade', 'Arcade'], ['ocean', 'Ocean'], ['sakura', 'Sakura'], ['cosmic', 'Cosmic']
   ];
-  const THEME_COLORS = { cream: ['#e9e6dc', '#d9ff00'], midnight: ['#0f110e', '#d9ff00'], cyber: ['#07060d', '#ff2bd6'], terminal: ['#020a04', '#39ff6a'], vapor: ['#3b1170', '#ff71ce'], aurora: ['#0a3a3c', '#5cffd2'], grape: ['#130e1f', '#c59bff'], sunset: ['#1a0e12', '#ffb347'], bubblegum: ['#ffe0ed', '#ff8bd1'], matcha: ['#dce9d2', '#9dff6a'], gameboy: ['#c4cfa1', '#8bac0f'] };
-  const DARK_THEMES = new Set(['midnight', 'cyber', 'terminal', 'vapor', 'aurora', 'grape', 'sunset']);
+  const THEME_COLORS = { cream: ['#e9e6dc', '#d9ff00'], midnight: ['#0f110e', '#d9ff00'], cyber: ['#07060d', '#ff2bd6'], terminal: ['#020a04', '#39ff6a'], vapor: ['#3b1170', '#ff71ce'], aurora: ['#0a3a3c', '#5cffd2'], grape: ['#130e1f', '#c59bff'], sunset: ['#1a0e12', '#ffb347'], bubblegum: ['#ffe0ed', '#ff8bd1'], matcha: ['#dce9d2', '#9dff6a'], gameboy: ['#c4cfa1', '#8bac0f'], theater: ['#100b11', '#d6ac70'], arcade: ['#09051a', '#65efff'], ocean: ['#061c2b', '#57d8ec'], sakura: ['#2b1223', '#ff9acb'], cosmic: ['#100b25', '#a28aff'] };
+  const DARK_THEMES = new Set(['midnight', 'cyber', 'terminal', 'vapor', 'aurora', 'grape', 'sunset', 'theater', 'arcade', 'ocean', 'sakura', 'cosmic']);
   function resolveTheme(choice) { return choice === 'auto' ? (window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches ? 'midnight' : 'cream') : (THEME_COLORS[choice] ? choice : 'cream'); }
   function applyTheme(choice, animate) {
     const t = resolveTheme(choice);
@@ -1499,6 +1500,10 @@
     clearActiveRoomEffect();
     stopHeartbeat(); stopStats(); releaseWakeLock(); document.body.classList.remove('in-call'); pinnedId = null;
     if (document.fullscreenElement) { try { document.exitFullscreen(); } catch (_) {} }
+    callScreen.classList.remove('theater-immersive');
+    document.body.classList.remove('theater-immersive-active');
+    syncTheaterImmersiveButton();
+    setReactionPickerOpen(false);
     if (ws) { const s = ws; ws = null; try { s.close(); } catch (_) {} }
     if (pendingSocket) { const s = pendingSocket; pendingSocket = null; try { s.close(); } catch (_) {} }
     closeAllPeers();
@@ -1633,6 +1638,11 @@
   const mediaPicker = $('theater-media-file');
   function applyRoomMode(mode) {
     activeRoomMode = mode === 'theater' ? 'theater' : 'normal';
+    if (activeRoomMode !== 'theater') {
+      callScreen.classList.remove('theater-immersive');
+      document.body.classList.remove('theater-immersive-active');
+      syncTheaterImmersiveButton();
+    }
     callScreen.classList.toggle('theater-mode', activeRoomMode === 'theater');
     $('theater-controls').classList.toggle('hidden', activeRoomMode !== 'theater');
     $('theater-stage').classList.toggle('hidden', activeRoomMode !== 'theater');
@@ -1938,7 +1948,7 @@
     if (map[k]) { e.preventDefault(); $(map[k]).click(); }
     else if (k === 'f') { e.preventDefault(); if (fsBtn && fsSupported) toggleFullscreen(); else tileFullscreen(videoGrid.querySelector('.video-tile.pinned') || localTile); }
     else if (k === 'g') { e.preventDefault(); $('snap-photo').click(); }
-    else if (k === 'escape') { $('settings-overlay').classList.add('hidden'); }
+    else if (k === 'escape') { $('settings-overlay').classList.add('hidden'); setReactionPickerOpen(false); }
   });
 
   // ---------- fullscreen (call room only) ----------
@@ -1975,11 +1985,52 @@
       fsRoot.classList.toggle('is-fullscreen', active);
       fsBtn.title = active ? 'Exit fullscreen' : 'Fullscreen';
       fsBtn.setAttribute('aria-label', active ? 'Exit fullscreen' : 'Toggle fullscreen');
+      if (!active && fsRoot.classList.contains('theater-immersive')) {
+        fsRoot.classList.remove('theater-immersive');
+        document.body.classList.remove('theater-immersive-active');
+        syncTheaterImmersiveButton();
+      }
     };
     document.addEventListener('fullscreenchange', sync);
     document.addEventListener('webkitfullscreenchange', sync);
     sync();
   }
+
+  // Theater immersive view: CSS keeps the auditorium full-viewport even on
+  // mobile browsers that do not expose the Fullscreen API. Native fullscreen
+  // is requested from the same user click when the browser supports it.
+  const theaterImmersiveBtn = $('theater-immersive-toggle');
+  function syncTheaterImmersiveButton() {
+    if (!theaterImmersiveBtn) return;
+    const active = callScreen.classList.contains('theater-immersive');
+    theaterImmersiveBtn.setAttribute('aria-pressed', String(active));
+    theaterImmersiveBtn.textContent = active ? '⤢ EXIT IMMERSIVE' : '⛶ IMMERSIVE VIEW';
+    theaterImmersiveBtn.title = active ? 'Return to standard theater layout' : 'Expand theater to fill the screen';
+  }
+  async function toggleTheaterImmersive() {
+    if (activeRoomMode !== 'theater') { toast('Choose Theater room mode first.'); return; }
+    const enabling = !callScreen.classList.contains('theater-immersive');
+    if (enabling) {
+      callScreen.classList.add('theater-immersive');
+      document.body.classList.add('theater-immersive-active');
+      syncTheaterImmersiveButton();
+      if (fsSupported && !isFs()) {
+        try {
+          if (fsRoot.requestFullscreen) await fsRoot.requestFullscreen({ navigationUI: 'hide' });
+          else if (fsRoot.webkitRequestFullscreen) fsRoot.webkitRequestFullscreen();
+        } catch (_) { toast('Immersive layout enabled. Browser fullscreen is unavailable here.'); }
+      }
+    } else {
+      callScreen.classList.remove('theater-immersive');
+      document.body.classList.remove('theater-immersive-active');
+      syncTheaterImmersiveButton();
+      if (isFs()) {
+        try { const exit = document.exitFullscreen || document.webkitExitFullscreen; if (exit) await exit.call(document); } catch (_) {}
+      }
+    }
+  }
+  if (theaterImmersiveBtn) theaterImmersiveBtn.addEventListener('click', toggleTheaterImmersive);
+  syncTheaterImmersiveButton();
 
   // ---------- party mode, exact supplied sounds, exclusive room reactions ----------
   let partyConfettiTimer = null;
@@ -2261,10 +2312,46 @@
     else if (emoji === '🎵') toggleRoomMusic();
   }
 
+  const reactionLauncher = $('reaction-launcher');
+  const reactionPicker = $('reaction-picker');
+  const reactionPickerClose = $('reaction-picker-close');
+  function setReactionPickerOpen(open) {
+    if (!reactionPicker || !reactionLauncher) return;
+    reactionPicker.classList.toggle('hidden', !open);
+    reactionPicker.setAttribute('aria-hidden', String(!open));
+    reactionLauncher.setAttribute('aria-expanded', String(open));
+    if (open) {
+      const anchor = reactionLauncher.getBoundingClientRect();
+      const panel = reactionPicker.getBoundingClientRect();
+      const panelWidth = Math.min(panel.width || 352, window.innerWidth - 24);
+      const panelHeight = panel.height || 280;
+      const left = Math.max(12, Math.min(window.innerWidth - panelWidth - 12, anchor.left + anchor.width / 2 - panelWidth / 2));
+      let top = anchor.top - panelHeight - 10;
+      if (top < 12) top = Math.min(window.innerHeight - panelHeight - 12, anchor.bottom + 10);
+      reactionPicker.style.left = left + 'px';
+      reactionPicker.style.top = Math.max(12, top) + 'px';
+    } else {
+      reactionPicker.style.left = '';
+      reactionPicker.style.top = '';
+    }
+  }
+  if (reactionLauncher) reactionLauncher.addEventListener('click', (event) => {
+    event.stopPropagation();
+    setReactionPickerOpen(reactionPicker && reactionPicker.classList.contains('hidden'));
+    buzz();
+  });
+  if (reactionPickerClose) reactionPickerClose.addEventListener('click', () => setReactionPickerOpen(false));
+  document.addEventListener('click', (event) => {
+    if (reactionPicker && !reactionPicker.classList.contains('hidden') && !reactionPicker.contains(event.target) && !reactionLauncher?.contains(event.target)) setReactionPickerOpen(false);
+  });
+  window.addEventListener('resize', () => {
+    if (reactionPicker && !reactionPicker.classList.contains('hidden')) setReactionPickerOpen(true);
+  }, { passive: true });
   document.querySelectorAll('[data-reaction]').forEach((button) => {
     button.addEventListener('click', () => {
-      if (!ws || ws.readyState !== 1) { toast('Join a room before reacting.'); return; }
+      if (!ws || ws.readyState !== 1) { toast('Join a room before reacting.'); setReactionPickerOpen(false); return; }
       const emoji = button.dataset.reaction;
+      setReactionPickerOpen(false);
       activateReaction(emoji, localName + ' (YOU)');
       try { ws.send(JSON.stringify({ type: 'reaction', emoji })); } catch (_) {}
     });

@@ -820,7 +820,113 @@
   function stopHeartbeat() { clearInterval(hbTimer); hbTimer = null; }
   async function acquireWakeLock() { try { if (navigator.wakeLock && !wakeLock) { wakeLock = await navigator.wakeLock.request('screen'); wakeLock.addEventListener('release', () => { wakeLock = null; }); } } catch (_) {} }
   function releaseWakeLock() { try { if (wakeLock) wakeLock.release(); } catch (_) {} wakeLock = null; }
-  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && inRoom) { acquireWakeLock(); if (ws && ws.readyState !== 1) { try { ws.close(); } catch (_) {} } } });
+  // Mobile browsers can suspend camera capture and pause video playback while
+  // the page is backgrounded. Resume visible videos first, then restore the
+  // camera track if the browser ended, muted, or stopped delivering frames.
+  let cameraResumeTimer = null;
+  let cameraRestoreTask = null;
+
+  function resumeVisibleVideoElements() {
+    videoGrid.querySelectorAll('video').forEach((video) => {
+      const stream = video.srcObject;
+      if (!stream || !stream.getVideoTracks().some((track) => track.readyState === 'live')) return;
+      if (video.paused || video.readyState < 2) {
+        try {
+          const playTask = video.play();
+          if (playTask && playTask.catch) playTask.catch(() => {});
+        } catch (_) {}
+      }
+    });
+  }
+
+  function restoreCameraAfterResume() {
+    if (cameraRestoreTask) return cameraRestoreTask;
+    cameraRestoreTask = (async () => {
+      if (!inRoom || !state.cam || !localStream) return;
+      let current = cameraTrack();
+      let needsRestore = !current || current.readyState !== 'live' || current.muted;
+      const preview = localTile && localTile.querySelector('video');
+
+      if (!needsRestore && preview && !state.screen) {
+        // Reattach the current camera track if the browser discarded the
+        // preview's media element state while the page was away.
+        const previewStream = preview.srcObject;
+        const previewTracks = previewStream && previewStream.getVideoTracks ? previewStream.getVideoTracks() : [];
+        if (!previewTracks.some((track) => track.id === current.id)) {
+          preview.srcObject = new MediaStream([current]);
+          preview.dataset.vt = current.id;
+        }
+        if (preview.paused) { try { await preview.play(); } catch (_) {} }
+
+        const before = preview.currentTime;
+        await new Promise((resolve) => setTimeout(resolve, 900));
+        if (!inRoom || !state.cam || !localStream || current !== cameraTrack()) return;
+        needsRestore = current.readyState !== 'live' || current.muted || preview.readyState < 2 || preview.currentTime <= before + 0.02;
+
+        // A live camera can outlast its preview decoder. Reset the preview
+        // once before asking the browser to open the camera device again.
+        if (needsRestore && current.readyState === 'live' && !current.muted) {
+          preview.srcObject = new MediaStream([current]);
+          preview.dataset.vt = current.id;
+          try { await preview.play(); } catch (_) {}
+          await new Promise((resolve) => setTimeout(resolve, 550));
+          if (!inRoom || !state.cam || !localStream || current !== cameraTrack()) return;
+          needsRestore = current.readyState !== 'live' || current.muted || preview.readyState < 2 || preview.currentTime <= before + 0.02;
+        }
+      }
+
+      if (!needsRestore) {
+        renderLocalTile();
+        resumeVisibleVideoElements();
+        return;
+      }
+
+      try {
+        const q = qualityFor(peers.size || 1);
+        const fresh = await gUM({ video: { width: { ideal: q.w }, height: { ideal: q.h }, frameRate: { ideal: q.fps }, facingMode: 'user' } });
+        const replacement = fresh.getVideoTracks()[0];
+        if (!replacement) {
+          fresh.getTracks().forEach((track) => { try { track.stop(); } catch (_) {} });
+          throw new Error('No camera track was returned.');
+        }
+        if (!inRoom || !state.cam || !localStream) {
+          fresh.getTracks().forEach((track) => { try { track.stop(); } catch (_) {} });
+          return;
+        }
+        current = cameraTrack();
+        replacement.enabled = state.cam;
+        try { replacement.contentHint = 'motion'; } catch (_) {}
+        if (current) localStream.removeTrack(current);
+        localStream.addTrack(replacement);
+        if (current && current.readyState !== 'ended') { try { current.stop(); } catch (_) {} }
+        if (!state.screen) await setOutgoingVideo(replacement);
+        renderLocalTile();
+        resumeVisibleVideoElements();
+        broadcastState();
+        toast('Camera reconnected.');
+      } catch (_) {
+        if (inRoom && state.cam) toast('Camera paused while you were away. Tap CAMERA to retry.');
+      }
+    })().finally(() => { cameraRestoreTask = null; });
+    return cameraRestoreTask;
+  }
+
+  function handleRoomForeground() {
+    if (document.visibilityState !== 'visible' || !inRoom) return;
+    acquireWakeLock();
+    resumeVisibleVideoElements();
+    if (ws && ws.readyState !== 1) { try { ws.close(); } catch (_) {} }
+    clearTimeout(cameraResumeTimer);
+    cameraResumeTimer = setTimeout(() => {
+      if (document.visibilityState === 'visible' && inRoom) {
+        resumeVisibleVideoElements();
+        restoreCameraAfterResume();
+      }
+    }, 900);
+  }
+  document.addEventListener('visibilitychange', handleRoomForeground);
+  window.addEventListener('pageshow', handleRoomForeground);
+  window.addEventListener('focus', handleRoomForeground);
   window.addEventListener('online', () => { if (inRoom) { toast('Back online — reconnecting…'); if (ws && ws.readyState !== 1) { try { ws.close(); } catch (_) {} } } });
   window.addEventListener('offline', () => { if (inRoom) { setStatus('OFFLINE', 'warn'); toast('You are offline.'); } });
 
@@ -1054,7 +1160,13 @@
       if (screenStream === captured) screenStream = null;
       state.screen = false;
       syncButtons(); renderLocalTile();
-      if (e && e.name !== 'NotAllowedError' && e.name !== 'AbortError') toast('Could not start screen sharing. Check browser permissions and try again.');
+      if (e && e.name === 'NotAllowedError') {
+        toast('Screen sharing is unavailable here or browser permission was denied. Try a supported desktop browser and check permissions.');
+      } else if (e && e.name === 'AbortError') {
+        toast('Screen sharing was cancelled or is not supported by this browser.');
+      } else {
+        toast('Screen sharing is not available here. Check browser support and permissions.');
+      }
     }
   });
 
@@ -1334,7 +1446,7 @@
     }, 9000);
   }
   function airhorn() {
-    // Original meme-style bass impact, synthesized locally (no external audio asset).
+    // Original synthesized classic meme airhorn: bright, brassy, layered blast.
     if (!prefs.sound) return;
     try {
       audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
@@ -1342,52 +1454,51 @@
       if (ctx.state === 'suspended') ctx.resume();
       const t0 = ctx.currentTime + 0.015;
       const master = ctx.createGain();
-      master.gain.setValueAtTime(0.72, t0);
-      master.connect(ctx.destination);
+      const limiter = ctx.createDynamicsCompressor();
+      limiter.threshold.setValueAtTime(-12, t0);
+      limiter.knee.setValueAtTime(8, t0);
+      limiter.ratio.setValueAtTime(8, t0);
+      master.gain.setValueAtTime(0.0001, t0);
+      master.gain.exponentialRampToValueAtTime(0.48, t0 + 0.025);
+      master.gain.setValueAtTime(0.42, t0 + 1.15);
+      master.gain.exponentialRampToValueAtTime(0.0001, t0 + 1.72);
+      master.connect(limiter); limiter.connect(ctx.destination);
 
-      // Deep descending sub-bass gives the familiar punchy meme-boom feel.
-      const sub = ctx.createOscillator();
-      const subGain = ctx.createGain();
-      sub.type = 'sine';
-      sub.frequency.setValueAtTime(104, t0);
-      sub.frequency.exponentialRampToValueAtTime(43, t0 + 0.52);
-      subGain.gain.setValueAtTime(0.0001, t0);
-      subGain.gain.exponentialRampToValueAtTime(0.72, t0 + 0.018);
-      subGain.gain.setValueAtTime(0.72, t0 + 0.09);
-      subGain.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.82);
-      sub.connect(subGain); subGain.connect(master);
-      sub.start(t0); sub.stop(t0 + 0.84);
+      // A tightly stacked major-brass chord creates the familiar BWAAAH tone.
+      [440, 554.37, 659.25].forEach((freq, i) => {
+        const osc = ctx.createOscillator();
+        const voice = ctx.createGain();
+        const filter = ctx.createBiquadFilter();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(freq, t0);
+        osc.detune.setValueAtTime(i === 0 ? -5 : (i === 2 ? 5 : 0), t0);
+        filter.type = 'lowpass';
+        filter.frequency.setValueAtTime(2100 - i * 180, t0);
+        filter.Q.setValueAtTime(1.2, t0);
+        voice.gain.setValueAtTime(0.0001, t0);
+        voice.gain.exponentialRampToValueAtTime(i === 0 ? 0.24 : 0.16, t0 + 0.025);
+        voice.gain.setValueAtTime(i === 0 ? 0.24 : 0.16, t0 + 1.18);
+        voice.gain.exponentialRampToValueAtTime(0.0001, t0 + 1.72);
+        osc.connect(filter); filter.connect(voice); voice.connect(master);
+        osc.start(t0); osc.stop(t0 + 1.74);
+      });
 
-      // A restrained upper harmonic makes the hit audible on phone speakers.
-      const body = ctx.createOscillator();
-      const bodyGain = ctx.createGain();
-      body.type = 'triangle';
-      body.frequency.setValueAtTime(188, t0);
-      body.frequency.exponentialRampToValueAtTime(72, t0 + 0.42);
-      bodyGain.gain.setValueAtTime(0.0001, t0);
-      bodyGain.gain.exponentialRampToValueAtTime(0.19, t0 + 0.012);
-      bodyGain.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.48);
-      body.connect(bodyGain); bodyGain.connect(master);
-      body.start(t0); body.stop(t0 + 0.5);
-
-      // Tiny filtered transient adds impact without a harsh, loud click.
-      const noiseBuffer = ctx.createBuffer(1, Math.max(1, Math.floor(ctx.sampleRate * 0.12)), ctx.sampleRate);
-      const noiseData = noiseBuffer.getChannelData(0);
-      for (let i = 0; i < noiseData.length; i++) noiseData[i] = (Math.random() * 2 - 1) * (1 - i / noiseData.length);
-      const noise = ctx.createBufferSource();
-      const filter = ctx.createBiquadFilter();
-      const noiseGain = ctx.createGain();
-      noise.buffer = noiseBuffer;
-      filter.type = 'lowpass'; filter.frequency.setValueAtTime(520, t0);
-      noiseGain.gain.setValueAtTime(0.0001, t0);
-      noiseGain.gain.exponentialRampToValueAtTime(0.075, t0 + 0.006);
-      noiseGain.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.12);
-      noise.connect(filter); filter.connect(noiseGain); noiseGain.connect(master);
-      noise.start(t0); noise.stop(t0 + 0.13);
-
+      // Short repeated stabs give it the punchy viral airhorn rhythm.
+      [0.00, 0.48, 0.96].forEach((offset) => {
+        const stab = ctx.createGain();
+        stab.gain.setValueAtTime(0.0001, t0 + offset);
+        stab.gain.exponentialRampToValueAtTime(1, t0 + offset + 0.018);
+        stab.gain.setValueAtTime(1, t0 + offset + 0.22);
+        stab.gain.exponentialRampToValueAtTime(0.0001, t0 + offset + 0.30);
+        // The envelope briefly gates the shared chord without adding another sound.
+        const gate = ctx.createOscillator();
+        gate.type = 'sine'; gate.frequency.setValueAtTime(1, t0 + offset);
+        gate.connect(stab); gate.start(t0 + offset); gate.stop(t0 + offset + 0.31);
+      });
       buzz([60, 40, 60]);
     } catch (_) {}
   }
+
   const ICEBREAKERS = ['Hot take: pineapple on pizza — yes or no?', 'What song is stuck in your head right now?', 'Worst haircut you ever had. Go.', 'Which app do you open first every morning?', 'What is the most useless skill you have?', 'Superpower you would pick but only for 5 minutes?', 'Last thing you watched that you could not stop talking about?', 'Describe your week as a movie title.', 'Cereal: milk first or cereal first?', 'What would your walk-up song be?', 'Unpopular opinion you will defend forever?', 'What emoji is your whole personality?', 'Dream trip if money did not matter?', 'Most random thing in your camera roll right now?', 'If we all started a band, what instrument are you?', 'What is your comfort show?', 'Rate your Wi-Fi from 1 to 10. Be honest.', 'What is a tiny thing that made you happy today?', 'Pick one: only text or only calls forever?', 'What is the weirdest food combo you secretly love?'];
   const icebreakerBtn = $('icebreaker');
   if (icebreakerBtn) icebreakerBtn.addEventListener('click', () => {

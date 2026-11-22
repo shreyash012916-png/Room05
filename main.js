@@ -129,6 +129,7 @@
 
   let config = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }], maxPeople: 5 };
   let ws = null;
+  let pendingSocket = null;
   let myId = '';
   let currentCode = '';
   let localName = '';
@@ -211,13 +212,16 @@
     if (window.matchMedia) matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { if (store.get('theme', 'auto') === 'auto') applyTheme('auto'); });
   }
 
-  // tiny haptics + sound blips (with a bundled local meme horn asset)
+  // tiny haptics + sound blips (with locally bundled room audio)
   function unlockRoomAudio() {
     if (!prefs.sound) return;
     try {
       audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
       if (audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
     } catch (_) {}
+    // Prime the two bundled audio elements during the user's first real tap.
+    // Muted priming is silent; later room-wide reactions can play on this device.
+    try { primeRoomAudio(); } catch (_) {}
   }
   // Unlock once on the first real tap/key interaction, before media events arrive.
   document.addEventListener('pointerdown', unlockRoomAudio, { once: true, capture: true, passive: true });
@@ -796,24 +800,26 @@
     return new Promise((resolve, reject) => {
       const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
       const sock = new WebSocket(`${proto}//${location.host}/ws`);
+      pendingSocket = sock;
       let settled = false;
-      const timer = setTimeout(() => { if (!settled) { settled = true; try { sock.close(); } catch (_) {} reject(new Error('The room server did not respond. If this site was idle, it may be waking up — wait 30 seconds and try again.')); } }, 45000);
+      const clearPending = () => { if (pendingSocket === sock) pendingSocket = null; };
+      const timer = setTimeout(() => { if (!settled) { settled = true; clearPending(); try { sock.close(); } catch (_) {} reject(new Error('The room server did not respond. If this site was idle, it may be waking up — wait 30 seconds and try again.')); } }, 45000);
       sock.onopen = () => {
         sock.send(JSON.stringify({ type: 'join', room: currentCode, name: localName, sessionId: CLIENT_SESSION_ID, roomMode: requestedRoomMode }));
       };
       sock.onmessage = (ev) => {
         let m; try { m = JSON.parse(ev.data); } catch { return; }
-        if (!settled && m.type === 'joined') { settled = true; clearTimeout(timer); resolve({ sock, joined: m }); return; }
-        if (!settled && m.type === 'full') { settled = true; clearTimeout(timer); try { sock.close(); } catch (_) {} reject(new Error('This room is full (' + m.max + ' people max).')); return; }
+        if (!settled && m.type === 'joined') { settled = true; clearPending(); clearTimeout(timer); resolve({ sock, joined: m }); return; }
+        if (!settled && m.type === 'full') { settled = true; clearPending(); clearTimeout(timer); try { sock.close(); } catch (_) {} reject(new Error('This room is full (' + m.max + ' people max).')); return; }
         if (!settled && m.type === 'error') {
-          settled = true; clearTimeout(timer);
+          settled = true; clearPending(); clearTimeout(timer);
           reject(new Error(m.reason === 'bad-session' ? 'Refresh ROOM/05 to update the room connection, then try again.' : 'Invalid room code.'));
           return;
         }
         if (settled) onServerMessage(m);
       };
-      sock.onerror = () => { if (!settled) { settled = true; clearTimeout(timer); reject(new Error('Could not reach the room server.')); } };
-      sock.onclose = () => { if (!settled) { settled = true; clearTimeout(timer); reject(new Error('Could not reach the room server.')); } else onSocketClosed(sock); };
+      sock.onerror = () => { if (!settled) { settled = true; clearPending(); clearTimeout(timer); reject(new Error('Could not reach the room server.')); } };
+      sock.onclose = () => { clearPending(); if (!settled) { settled = true; clearTimeout(timer); reject(new Error('Could not reach the room server.')); } else onSocketClosed(sock); };
     });
   }
 
@@ -1106,6 +1112,7 @@
       layoutGrid();
 
       const { sock, joined } = await openSocket();
+      if (leaving) { try { sock.close(); } catch (_) {} return; }
       if (sock.readyState !== WebSocket.OPEN) throw new Error('The room connection closed while joining. Please try again.');
       ws = sock;
       myId = joined.id;
@@ -1130,6 +1137,11 @@
       setBusy(false);
       refreshDevices();
     } catch (error) {
+      if (leaving) {
+        if (roomTabClaimed) releaseRoomTab();
+        setBusy(false);
+        return;
+      }
       console.error('ROOM/05 startup:', error);
       inRoom = false;
       stopHeartbeat(); stopStats(); releaseWakeLock();
@@ -1147,6 +1159,7 @@
   }
 
   function cleanupMedia() {
+    clearActiveRoomEffect();
     clearInterval(roomMusicTimer); roomMusicTimer = null; roomMusicOn = false;
     presentationAudioSources.forEach((source) => { try { source.disconnect(); } catch (_) {} }); presentationAudioSources = []; presentationAudioDestination = null; presentationSharedTrack = null;
     if (theaterMediaUrl) { try { URL.revokeObjectURL(theaterMediaUrl); } catch (_) {} theaterMediaUrl = ''; }
@@ -1157,19 +1170,15 @@
   }
 
   function leaveRoom() {
-    leaving = true; inRoom = false; retryCount = 0;
+    // Idempotent: repeated taps cannot race the socket/media teardown.
+    if (leaving || (!inRoom && !entering)) return;
+    leaving = true; inRoom = false; entering = false; retryCount = 0;
     releaseRoomTab();
-    clearTimeout(partyTimer);
-    clearTimeout(aartiTimer); aartiTimer = null;
-    if (callScreen) callScreen.querySelectorAll('.aarti-orbit').forEach((node) => node.remove());
-    roomMusicOn = false; clearInterval(roomMusicTimer); roomMusicTimer = null;
-    partyTimer = null;
-    callScreen.classList.remove('party');
-    document.querySelectorAll('#call-screen .party-banner, #call-screen .confetti').forEach((node) => node.remove());
-    if (reactionFloats) reactionFloats.replaceChildren();
+    clearActiveRoomEffect();
     stopHeartbeat(); stopStats(); releaseWakeLock(); document.body.classList.remove('in-call'); pinnedId = null;
     if (document.fullscreenElement) { try { document.exitFullscreen(); } catch (_) {} }
     if (ws) { const s = ws; ws = null; try { s.close(); } catch (_) {} }
+    if (pendingSocket) { const s = pendingSocket; pendingSocket = null; try { s.close(); } catch (_) {} }
     closeAllPeers();
     cleanupMedia();
     state = { mic: true, cam: true, screen: false, hand: false };
@@ -1186,6 +1195,13 @@
   }
 
   // ---------- controls ----------
+  const leaveButton = $('leave-room');
+  if (leaveButton) leaveButton.addEventListener('click', () => {
+    if (!inRoom && !entering) return;
+    leaveRoom();
+    toast('You left the room.');
+  });
+
   $('toggle-mic').addEventListener('click', async () => {
     let t = audioTrack();
     if (!t) {
@@ -1416,7 +1432,7 @@
   function screenShareUnavailableMessage() {
     if (!window.isSecureContext) return 'Screen sharing requires this room to be opened over HTTPS.';
     if (/Android|iPhone|iPad|iPod/i.test(navigator.userAgent)) {
-      return 'This mobile browser does not expose app/screen capture to websites. Use a browser/device that offers its native screen picker, or join from desktop.';
+      return 'Android browsers such as Chrome currently do not expose live screen/app capture to websites. This is a browser platform limit, not a ROOM/05 setting. You can still share a video file in Theater; live app sharing needs a supported desktop browser or a native Android app.';
     }
     return 'This browser does not provide screen capture. Try an up-to-date browser that supports the native screen picker.';
   }
@@ -1544,7 +1560,7 @@
   $('opt-sound').addEventListener('change', (e) => {
     prefs.sound = e.target.checked; store.set('sound', prefs.sound ? '1' : '0');
     if (prefs.sound) unlockRoomAudio();
-    if (!prefs.sound) { roomMusicOn = false; clearInterval(roomMusicTimer); roomMusicTimer = null; }
+    else clearActiveRoomEffect();
   });
 
   // snap a group photo (collage of everyone's current frame)
@@ -1635,93 +1651,131 @@
     sync();
   }
 
-  // ---------- party mode, airhorn, icebreakers, tile filters ----------
+  // ---------- party mode, exact supplied sounds, exclusive room reactions ----------
+  let partyBurstTimers = [];
+  let roomAudioPrimed = false;
+
+  const airhornAudio = new Audio('/airhorn-original.m4a');
+  airhornAudio.preload = 'auto';
+  airhornAudio.loop = false;
+  airhornAudio.volume = 1;
+  airhornAudio.addEventListener('ended', () => { try { airhornAudio.currentTime = 0; } catch (_) {} });
+
+  const aartiTrackAudio = new Audio('/aarti-original.m4a');
+  aartiTrackAudio.preload = 'metadata';
+  aartiTrackAudio.loop = false;
+  aartiTrackAudio.volume = 1;
+  aartiTrackAudio.addEventListener('ended', () => { try { aartiTrackAudio.currentTime = 0; } catch (_) {} });
+
+  function primeRoomAudio() {
+    if (roomAudioPrimed || !prefs.sound) return;
+    roomAudioPrimed = true;
+    [airhornAudio, aartiTrackAudio].forEach((audio) => {
+      const previousMuted = audio.muted;
+      const previousVolume = audio.volume;
+      audio.muted = true;
+      audio.volume = 0;
+      try {
+        const task = audio.play();
+        if (task && typeof task.then === 'function') {
+          task.then(() => {
+            audio.pause();
+            try { audio.currentTime = 0; } catch (_) {}
+            audio.muted = previousMuted;
+            audio.volume = previousVolume;
+          }).catch(() => {
+            audio.muted = previousMuted;
+            audio.volume = previousVolume;
+            roomAudioPrimed = false;
+          });
+        } else {
+          audio.pause();
+          try { audio.currentTime = 0; } catch (_) {}
+          audio.muted = previousMuted;
+          audio.volume = previousVolume;
+        }
+      } catch (_) {
+        audio.muted = previousMuted;
+        audio.volume = previousVolume;
+        roomAudioPrimed = false;
+      }
+    });
+  }
+
+  function stopAartiBgm() {
+    try { aartiTrackAudio.pause(); aartiTrackAudio.currentTime = 0; } catch (_) {}
+  }
+
+  function stopAirhorn() {
+    try { airhornAudio.pause(); airhornAudio.currentTime = 0; } catch (_) {}
+  }
+
+  function clearActiveRoomEffect() {
+    clearTimeout(partyTimer); partyTimer = null;
+    partyBurstTimers.forEach((timer) => clearTimeout(timer));
+    partyBurstTimers = [];
+    clearTimeout(aartiTimer); aartiTimer = null;
+    if (callScreen) {
+      callScreen.classList.remove('party');
+      callScreen.querySelectorAll('.aarti-orbit, .party-banner, .confetti, .room05-confetti').forEach((node) => node.remove());
+    }
+    if (videoGrid) videoGrid.classList.remove('aarti-active');
+    if (reactionFloats) reactionFloats.replaceChildren();
+    stopAartiBgm();
+    stopAirhorn();
+    roomMusicOn = false;
+    clearInterval(roomMusicTimer); roomMusicTimer = null;
+  }
+
+  function confetti() {
+    if (!callScreen) return;
+    const glyphs = ['✳', '◆', '●', '✦'];
+    for (let i = 0; i < 26; i++) {
+      const piece = document.createElement('span');
+      piece.className = 'room05-confetti';
+      piece.textContent = glyphs[i % glyphs.length];
+      piece.style.left = (Math.random() * 100).toFixed(1) + '%';
+      piece.style.setProperty('--fall-delay', (Math.random() * .45).toFixed(2) + 's');
+      piece.style.setProperty('--fall-duration', (1.2 + Math.random() * .9).toFixed(2) + 's');
+      piece.style.setProperty('--fall-drift', ((Math.random() - .5) * 110).toFixed(0) + 'px');
+      callScreen.appendChild(piece);
+      window.setTimeout(() => piece.remove(), 2600);
+    }
+  }
+
   function party() {
     if (!callScreen || callScreen.classList.contains('hidden')) return;
     callScreen.classList.add('party');
-    callScreen.querySelectorAll('.party-banner').forEach((n) => n.remove());
-    const b = document.createElement('div');
-    b.className = 'party-banner';
-    b.textContent = '🪩 PARTY MODE';
-    callScreen.appendChild(b);
+    const banner = document.createElement('div');
+    banner.className = 'party-banner';
+    banner.textContent = '🪩 PARTY MODE';
+    callScreen.appendChild(banner);
     confetti();
-    setTimeout(() => { if (callScreen && !callScreen.classList.contains('hidden')) confetti(); }, 700);
-    setTimeout(() => { if (callScreen && !callScreen.classList.contains('hidden')) confetti(); }, 1500);
+    partyBurstTimers.push(window.setTimeout(confetti, 700));
+    partyBurstTimers.push(window.setTimeout(confetti, 1500));
     buzz([30, 40, 30, 40, 60]);
     blip('join');
-    clearTimeout(partyTimer);
-    partyTimer = setTimeout(() => {
+    partyTimer = window.setTimeout(() => {
       callScreen.classList.remove('party');
-      b.remove();
+      banner.remove();
+      callScreen.querySelectorAll('.room05-confetti').forEach((node) => node.remove());
+      partyBurstTimers = [];
       partyTimer = null;
     }, 9000);
   }
-  const chineseHornAudio = new Audio('/chinese-meme-horn.wav');
-  chineseHornAudio.preload = 'auto';
-  chineseHornAudio.volume = 0.78;
+
   function airhorn() {
     if (!prefs.sound) return;
     unlockRoomAudio();
     try {
-      chineseHornAudio.pause();
-      chineseHornAudio.currentTime = 0;
-      const playback = chineseHornAudio.play();
-      if (playback && playback.catch) playback.catch(() => playFallbackHorn());
+      airhornAudio.pause();
+      airhornAudio.currentTime = 0;
+      const playback = airhornAudio.play();
+      if (playback && typeof playback.catch === 'function') playback.catch(() => {
+        // Do not substitute a different sound: the provided source must remain exact.
+      });
       buzz([55, 35, 55]);
-    } catch (_) { playFallbackHorn(); }
-  }
-  function playFallbackHorn() {
-    // Original synthesized classic meme airhorn: bright, brassy, layered blast.
-    if (!prefs.sound) return;
-    try {
-      audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
-      const ctx = audioCtx;
-      if (ctx.state === 'suspended') ctx.resume().catch(() => {});
-      const t0 = ctx.currentTime + 0.015;
-      const master = ctx.createGain();
-      const limiter = ctx.createDynamicsCompressor();
-      limiter.threshold.setValueAtTime(-12, t0);
-      limiter.knee.setValueAtTime(8, t0);
-      limiter.ratio.setValueAtTime(8, t0);
-      master.gain.setValueAtTime(0.0001, t0);
-      master.gain.exponentialRampToValueAtTime(0.48, t0 + 0.025);
-      master.gain.setValueAtTime(0.42, t0 + 1.15);
-      master.gain.exponentialRampToValueAtTime(0.0001, t0 + 1.72);
-      master.connect(limiter); limiter.connect(ctx.destination);
-
-      // A tightly stacked major-brass chord creates the familiar BWAAAH tone.
-      [440, 554.37, 659.25].forEach((freq, i) => {
-        const osc = ctx.createOscillator();
-        const voice = ctx.createGain();
-        const filter = ctx.createBiquadFilter();
-        osc.type = 'sawtooth';
-        osc.frequency.setValueAtTime(freq, t0);
-        osc.detune.setValueAtTime(i === 0 ? -5 : (i === 2 ? 5 : 0), t0);
-        filter.type = 'lowpass';
-        filter.frequency.setValueAtTime(2100 - i * 180, t0);
-        filter.Q.setValueAtTime(1.2, t0);
-        voice.gain.setValueAtTime(0.0001, t0);
-        voice.gain.exponentialRampToValueAtTime(i === 0 ? 0.24 : 0.16, t0 + 0.025);
-        voice.gain.setValueAtTime(i === 0 ? 0.24 : 0.16, t0 + 1.18);
-        voice.gain.exponentialRampToValueAtTime(0.0001, t0 + 1.72);
-        osc.connect(filter); filter.connect(voice); voice.connect(master);
-        osc.start(t0); osc.stop(t0 + 1.74);
-      });
-
-      // Short repeated stabs give it the punchy viral airhorn rhythm.
-      [0.00, 0.48, 0.96].forEach((offset) => {
-        const stab = ctx.createGain();
-        stab.gain.setValueAtTime(0.0001, t0 + offset);
-        stab.gain.exponentialRampToValueAtTime(1, t0 + offset + 0.018);
-        stab.gain.setValueAtTime(1, t0 + offset + 0.22);
-        stab.gain.exponentialRampToValueAtTime(0.0001, t0 + offset + 0.30);
-        // The envelope briefly gates the shared chord without adding another sound.
-        const gate = ctx.createOscillator();
-        gate.type = 'sine'; gate.frequency.setValueAtTime(1, t0 + offset);
-        gate.connect(stab); gate.start(t0 + offset); gate.stop(t0 + offset + 0.31);
-      });
-      buzz([60, 40, 60]);
-    } catch (_) {}
+    } catch (_) { /* Browser playback policy may still require a local tap. */ }
   }
 
   function floatReaction(emoji, name) {
@@ -1742,45 +1796,20 @@
 
   function playAartiBgm() {
     if (!prefs.sound) return;
+    unlockRoomAudio();
     try {
-      audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
-      const ctx = audioCtx;
-      if (ctx.state === 'suspended') ctx.resume().catch(() => {});
-      const start = ctx.currentTime + 0.04;
-      const master = ctx.createGain();
-      master.gain.setValueAtTime(0.0001, start);
-      master.gain.exponentialRampToValueAtTime(0.035, start + 0.65);
-      master.gain.setValueAtTime(0.035, start + 5.8);
-      master.gain.exponentialRampToValueAtTime(0.0001, start + 7.4);
-      master.connect(ctx.destination);
-
-      // A soft original drone with spaced bell notes; no external audio dependency.
-      [110, 164.81, 220].forEach((frequency, index) => {
-        const oscillator = ctx.createOscillator();
-        const voice = ctx.createGain();
-        oscillator.type = index === 0 ? 'sine' : 'triangle';
-        oscillator.frequency.setValueAtTime(frequency, start);
-        voice.gain.setValueAtTime(index === 0 ? 0.38 : 0.16, start);
-        oscillator.connect(voice); voice.connect(master);
-        oscillator.start(start); oscillator.stop(start + 7.5);
-      });
-      [0, 1.75, 3.5, 5.25].forEach((offset, index) => {
-        const bell = ctx.createOscillator();
-        const envelope = ctx.createGain();
-        bell.type = 'sine';
-        bell.frequency.setValueAtTime([659.25, 783.99, 987.77, 783.99][index], start + offset);
-        envelope.gain.setValueAtTime(0.0001, start + offset);
-        envelope.gain.exponentialRampToValueAtTime(0.22, start + offset + 0.018);
-        envelope.gain.exponentialRampToValueAtTime(0.0001, start + offset + 1.25);
-        bell.connect(envelope); envelope.connect(master);
-        bell.start(start + offset); bell.stop(start + offset + 1.3);
-      });
-    } catch (_) { /* sound is decorative; keep the visual effect working */ }
+      aartiTrackAudio.pause();
+      aartiTrackAudio.currentTime = 0;
+      const playback = aartiTrackAudio.play();
+      if (playback && typeof playback.catch === 'function') playback.catch(() => {});
+    } catch (_) { /* Browser audio policy must never block the visual aarti. */ }
   }
 
   function aartiMode() {
     if (!callScreen || callScreen.classList.contains('hidden')) return;
+    clearTimeout(aartiTimer); aartiTimer = null;
     callScreen.querySelectorAll('.aarti-orbit').forEach((node) => node.remove());
+
     const orbit = document.createElement('div');
     orbit.className = 'aarti-orbit';
     orbit.setAttribute('aria-hidden', 'true');
@@ -1789,14 +1818,32 @@
     diya.textContent = '🪔';
     orbit.appendChild(diya);
     callScreen.appendChild(orbit);
+
+    const bounds = callScreen.getBoundingClientRect();
+    const orbitRadius = Math.max(38, Math.min(bounds.width, bounds.height) / 2 - 36);
+    const radiusX = orbitRadius;
+    const radiusY = orbitRadius;
+    // Many points keep the path circular/elliptical instead of cutting corners.
+    const frames = Array.from({ length: 97 }, (_, index) => {
+      const angle = -Math.PI / 2 + (index / 96) * Math.PI * 2;
+      return {
+        transform: `translate(-50%, -50%) translate(${(Math.cos(angle) * radiusX).toFixed(2)}px, ${(Math.sin(angle) * radiusY).toFixed(2)}px)`
+      };
+    });
+    if (typeof diya.animate === 'function') {
+      diya.animate(frames, { duration: 8000, iterations: Infinity, easing: 'linear' });
+    } else {
+      // CSS fallback for browsers without Web Animations API.
+      orbit.classList.add('aarti-orbit-fallback');
+    }
     videoGrid.classList.add('aarti-active');
     playAartiBgm();
-    clearTimeout(aartiTimer);
     aartiTimer = window.setTimeout(() => {
       orbit.remove();
       videoGrid.classList.remove('aarti-active');
+      stopAartiBgm();
       aartiTimer = null;
-    }, 15000);
+    }, 8000);
   }
 
   function toggleRoomMusic() {
@@ -1835,6 +1882,9 @@
 
   function activateReaction(emoji, name) {
     if (!emoji) return;
+    const musicWasPlaying = emoji === '🎵' && roomMusicOn;
+    clearActiveRoomEffect();
+    if (emoji === '🎵' && musicWasPlaying) return;
     if (emoji === '🪔') { aartiMode(); return; }
     floatReaction(emoji, name);
     if (emoji === '🪩') party();

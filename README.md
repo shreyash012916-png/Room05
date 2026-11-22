@@ -1,3 +1,12 @@
+# ROOM/05 v6.9.3
+
+## v6.9.3 fixes
+- Uses the two supplied M4A audio files byte-for-byte; no audio conversion, normalization, trimming, or synthesis. The airhorn plays once; the aarti audio is stopped automatically after 8 seconds.
+- A room reaction replaces the currently active reaction/effect instead of stacking on top of it.
+- The single diya now orbits in a smooth 96-segment path above participant video tiles.
+- The LEAVE button now has a click handler and runs an idempotent room/media teardown.
+- M4A static assets are served with the `audio/mp4` MIME type.
+
 # ROOM/05 — Peer-to-peer video rooms (v6.8 Free deployment)
 
 ROOM/05 is a browser-based room for video, voice, chat, reactions and screen sharing. Calls use browser WebRTC connections between participants. The Node server serves the website and relays the small signaling messages needed to connect peers.
@@ -15,7 +24,7 @@ ROOM/05 is a browser-based room for video, voice, chat, reactions and screen sha
 - User accounts are stored in a separate PostgreSQL database (Neon), not in Render's local filesystem. This is required because a Render Free service has an ephemeral filesystem.
 - The session-signing secret is also stored in PostgreSQL so a service restart does not invalidate every session.
 - Username/password login remains part of ROOM/05 itself. Neon is only the database; it is not an external login or identity provider.
-- Existing account, legal and room functionality is retained. This version adds room-wide Normal / Theater layouts, shared local-video playback in Theater mode (where the browser supports media capture), separate camera and presentation video tracks, one-presenter-at-a-time coordination, additional camera filters, a single full-room Aarti orbit with soft original chime BGM, an included local suona-style meme horn, and refreshed brutalist Theater styling.
+- Existing account, legal and room functionality is retained. This version adds room-wide Normal / Theater layouts, shared local-video playback in Theater mode (where the browser supports media capture), separate camera and presentation video tracks, one-presenter-at-a-time coordination, additional camera filters, a single full-room Aarti orbit with the supplied original aarti audio and the supplied original airhorn sound, and refreshed brutalist Theater styling.
 - Automatic video quality now reduces resolution, frame rate and per-peer bitrate as rooms grow; high manual presets are automatically capped in larger groups, and individual peer video bitrate adapts when packet loss is reported.
 
 ## Accounts and first-visit agreement
@@ -142,3 +151,10 @@ The signaling server advertises multiple public STUN servers. For connectivity t
 - Theater has a dedicated browser-native app/screen picker action where `getDisplayMedia()` is supported. Mobile browser support remains device/browser-dependent.
 - Sound is warmed on the first genuine user interaction; rejected media playback promises are handled without a user-gesture alert inside the site. Browser autoplay restrictions remain in force.
 - Creator credit and structured metadata identify Shreyash.
+
+## v6.9.2 media and developer-page update
+- The room airhorn plays the original user-supplied `airhorn-original.m4a` bit-for-bit once (about 4.55 seconds; no looping or synthesized replacement).
+- Aarti mode streams the original user-supplied `aarti-original.m4a` without editing or re-encoding it, and automatically stops playback and the visual orbit after 8 seconds.
+- The single diya follows a true circular orbit, sized to fit the visible call viewport.
+- `/developers.html` identifies Shreyash as the creator and is linked immediately after Terms & Conditions in the landing footer.
+- Live screen capture continues to use the browser-native `getDisplayMedia()` picker where the browser supports it. Chrome on Android currently does not support this API, so a website cannot invoke an Android app/screen picker there; Theater still supports selecting a local video file.

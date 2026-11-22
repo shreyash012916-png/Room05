@@ -494,7 +494,7 @@ button, a, input, select { -webkit-tap-highlight-color: transparent; }
 .call-screen.theater-mode .theater-stage,
 .call-screen.theater-mode .video-grid { transition: border-color .2s ease, box-shadow .2s ease; }
 
-/* One diya travels around the viewport edge; call controls and tiles remain above it. */
+/* One diya follows a smooth, single elliptical orbit around the complete call viewport. */
 #call-screen { position: relative; isolation: isolate; }
 #call-screen > .call-topbar,
 #call-screen > .call-body,
@@ -516,25 +516,16 @@ button, a, input, select { -webkit-tap-highlight-color: transparent; }
   display: block;
   font-size: clamp(29px, 4.3vw, 46px);
   line-height: 1;
+  transform: translate(-50%,-50%);
   filter: drop-shadow(0 0 8px rgba(255,151,45,.9)) drop-shadow(0 0 24px rgba(255,179,73,.78));
   will-change: transform;
-  animation: aarti-perimeter 7.2s linear infinite, aarti-diya-glow 1.15s ease-in-out infinite alternate;
-}
-@keyframes aarti-perimeter {
-  0% { transform: translate(-50%,-50%) translate(0,-43vh) rotate(-8deg); }
-  25% { transform: translate(-50%,-50%) translate(43vw,0) rotate(6deg); }
-  50% { transform: translate(-50%,-50%) translate(0,43vh) rotate(-7deg); }
-  75% { transform: translate(-50%,-50%) translate(-43vw,0) rotate(7deg); }
-  100% { transform: translate(-50%,-50%) translate(0,-43vh) rotate(-8deg); }
+  animation: aarti-diya-glow 1.15s ease-in-out infinite alternate;
 }
 @keyframes aarti-diya-glow {
   from { filter: drop-shadow(0 0 5px rgba(255,151,45,.65)) drop-shadow(0 0 14px rgba(255,179,73,.45)); }
   to { filter: drop-shadow(0 0 12px rgba(255,151,45,1)) drop-shadow(0 0 30px rgba(255,179,73,.9)); }
 }
-@keyframes aarti-room-glow {
-  from { opacity: .52; }
-  to { opacity: 1; }
-}
+@keyframes aarti-room-glow { from { opacity: .52; } to { opacity: 1; } }
 @media (max-width: 650px) {
   .call-screen.theater-mode .theater-stage {
     min-height: 230px;
@@ -548,5 +539,56 @@ button, a, input, select { -webkit-tap-highlight-color: transparent; }
   .site-credit { font-size: 7px; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .aarti-diya, #call-screen > .aarti-orbit { animation-duration: .01ms !important; animation-iteration-count: 1 !important; }
+  .aarti-orbit { animation: none !important; }
+  .aarti-orbit .aarti-diya { animation: aarti-diya-glow 1.15s ease-in-out infinite alternate !important; }
+}
+
+
+/* ROOM/05 v6.9.3 — aarti sits above live video and follows a smooth full-room orbit. */
+#call-screen { position: relative; isolation: isolate; }
+#call-screen > .call-topbar,
+#call-screen > .call-body,
+#call-screen > .call-footer { position: relative; z-index: 2; }
+#call-screen > .aarti-orbit {
+  position: absolute;
+  z-index: 12;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+#call-screen > .aarti-orbit .aarti-diya {
+  position: absolute;
+  z-index: 13;
+  left: 50%;
+  top: 50%;
+  display: block;
+  font-size: clamp(31px, 4.8vw, 49px);
+  line-height: 1;
+  transform: translate(-50%, -50%);
+  filter: drop-shadow(0 0 9px rgba(255,151,45,.98)) drop-shadow(0 0 25px rgba(255,179,73,.88));
+  will-change: transform;
+  animation: aarti-diya-glow 1.15s ease-in-out infinite alternate;
+}
+#call-screen .room05-confetti {
+  position: absolute;
+  z-index: 10;
+  top: -24px;
+  font-size: 18px;
+  line-height: 1;
+  color: var(--red);
+  text-shadow: 2px 2px 0 var(--lime);
+  pointer-events: none;
+  animation: room05-confetti-fall var(--fall-duration, 1.8s) ease-in var(--fall-delay, 0s) forwards;
+}
+@keyframes room05-confetti-fall {
+  0% { opacity: 0; transform: translate3d(0, -12px, 0) rotate(0deg); }
+  12% { opacity: 1; }
+  100% { opacity: 0; transform: translate3d(var(--fall-drift, 0px), calc(100vh + 60px), 0) rotate(540deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  #call-screen > .aarti-orbit .aarti-diya { animation: none !important; }
+  #call-screen .room05-confetti { animation-duration: .01ms !important; }
 }

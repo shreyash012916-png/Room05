@@ -21,13 +21,15 @@ const ROOT = __dirname;
 const TERMS_VERSION = '1.0';
 const PRIVACY_VERSION = '1.1';
 const SESSION_MAX_AGE = 30 * 24 * 60 * 60;
-const PUBLIC_FILES = ['index.html', 'style.css', 'auth.css', 'auth.js', 'main.js', 'polish.css', 'legal.css', 'terms.html', 'privacy.html', 'favicon.svg', 'chinese-meme-horn.wav'];
+const PUBLIC_FILES = ['index.html', 'style.css', 'auth.css', 'auth.js', 'main.js', 'polish.css', 'legal.css', 'terms.html', 'privacy.html', 'developers.html', 'favicon.svg', 'airhorn-original.m4a', 'aarti-original.m4a'];
 const MIME = {
   '.html': 'text/html; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
   '.svg': 'image/svg+xml',
-  '.wav': 'audio/wav'
+  '.wav': 'audio/wav',
+  '.mp3': 'audio/mpeg',
+  '.m4a': 'audio/mp4'
 };
 
 if (!process.env.DATABASE_URL) {
@@ -338,7 +340,8 @@ const ASSETS = new Map();
 for (const file of PUBLIC_FILES) {
   try {
     const raw = fs.readFileSync(path.join(ROOT, file));
-    ASSETS.set(file, { raw, gz: zlib.gzipSync(raw, { level: 9 }), type: MIME[path.extname(file)], etag: '"' + crypto.createHash('sha1').update(raw).digest('hex').slice(0, 16) + '"' });
+    const isAudio = /\.(?:m4a|mp3|wav)$/i.test(file);
+    ASSETS.set(file, { raw, gz: isAudio ? null : zlib.gzipSync(raw, { level: 9 }), type: MIME[path.extname(file)], etag: '"' + crypto.createHash('sha1').update(raw).digest('hex').slice(0, 16) + '"' });
   } catch (error) { console.error('Missing file', file, error.message); }
 }
 
@@ -361,9 +364,36 @@ const server = http.createServer((req, res) => {
     const asset = ASSETS.get(name);
     if (!asset) return send(res, 404, 'Not found');
     if (req.headers['if-none-match'] === asset.etag) return send(res, 304, '', asset.type, { ETag: asset.etag });
-    const gz = /\bgzip\b/.test(req.headers['accept-encoding'] || '');
+
+    // Audio sources support HTTP byte ranges so the 18-minute original aarti
+    // can stream only the first eight seconds rather than forcing a full download.
+    const isAudio = /\.(?:m4a|mp3|wav)$/i.test(name);
+    const range = isAudio && req.headers.range;
+    if (range) {
+      const match = /^bytes=(\d*)-(\d*)$/.exec(range);
+      const size = asset.raw.length;
+      if (!match || (!match[1] && !match[2])) {
+        return send(res, 416, '', asset.type, { 'Content-Range': `bytes */${size}`, 'Accept-Ranges': 'bytes' });
+      }
+      let start = match[1] ? Number(match[1]) : Math.max(0, size - Number(match[2]));
+      let end = match[2] && match[1] ? Number(match[2]) : (match[2] && !match[1] ? size - 1 : size - 1);
+      if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start < 0 || end < start || start >= size) {
+        return send(res, 416, '', asset.type, { 'Content-Range': `bytes */${size}`, 'Accept-Ranges': 'bytes' });
+      }
+      end = Math.min(end, size - 1);
+      const chunk = asset.raw.subarray(start, end + 1);
+      return send(res, 206, req.method === 'HEAD' ? '' : chunk, asset.type, {
+        ETag: asset.etag,
+        'Cache-Control': 'public, max-age=0, must-revalidate',
+        'Accept-Ranges': 'bytes',
+        'Content-Range': `bytes ${start}-${end}/${size}`
+      });
+    }
+
+    const gz = !isAudio && /\bgzip\b/.test(req.headers['accept-encoding'] || '');
     const body = gz ? asset.gz : asset.raw;
     const extra = { ETag: asset.etag, Vary: 'Accept-Encoding', 'Cache-Control': 'public, max-age=0, must-revalidate' };
+    if (isAudio) extra['Accept-Ranges'] = 'bytes';
     if (gz) extra['Content-Encoding'] = 'gzip';
     return send(res, 200, req.method === 'HEAD' ? '' : body, asset.type, extra);
   })().catch((error) => {

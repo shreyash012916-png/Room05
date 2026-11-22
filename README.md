@@ -1,6 +1,18 @@
-# ROOM/05 v6.9.3
+# ROOM/05 v6.10.2
 
-## v6.9.3 fixes
+## v6.10.2 dance reaction audio
+
+- Adds the supplied `ReelAudio-97221.mp3` dance track with the first 16 seconds removed; the remaining approximately 42 seconds play once when the 🪩 dancing/party reaction is selected.
+- The dance track is stopped and reset when another room effect replaces it. The rest of the v6.10.1 application and assets are retained.
+
+## v6.10.1 reliability fixes
+- Incoming peer voice uses an unlocked Web Audio output path instead of depending on audible autoplay from remote video elements; muted video tiles remain responsible only for picture. A recovery button appears if Android or another browser suspends the audio graph.
+- Added remote voice node cleanup, audio-context resume handling, and a fallback audio element for browsers without Web Audio support.
+- Restored the People and Chat toolbar actions, close-panel action, chat form submission, safe message rendering, and unread-message indicator.
+- Improved perfect-negotiation collision handling, candidate queueing (including end-of-candidates), ICE error reporting, and bounded ICE restart retries.
+- Added support for multiple TURN/TURNS URLs through `TURN_URLS`; STUN-only service cannot guarantee traversal through restrictive NAT/firewalls.
+
+## v6.9.3 fixes (preserved)
 - Uses the two supplied M4A audio files byte-for-byte; no audio conversion, normalization, trimming, or synthesis. The airhorn plays once; the aarti audio is stopped automatically after 8 seconds.
 - A room reaction replaces the currently active reaction/effect instead of stacking on top of it.
 - The single diya now orbits in a smooth 96-segment path above participant video tiles.
@@ -69,6 +81,7 @@ The providers can change their free-tier limits. This package creates no paid Re
    - Value: the private Neon connection string copied in Step 1
    - Key: `MAX_PEOPLE`
    - Value: `5`
+   - Optional, for better reachability on restrictive mobile/carrier networks: `TURN_URLS`, `TURN_USER`, and `TURN_PASS` supplied by a TURN provider. The TURN provider must be configured for WebRTC; use credentials with suitable expiry/usage limits where available.
 6. Deploy. Render should install `pg` and `ws` from `package.json`.
 
 The included `render.yaml` is also set to `plan: free`, has no disk, and asks for `DATABASE_URL` as a secret environment value. If you choose a Blueprint-based setup instead of creating a Web Service manually, check that the resulting service is still Free before confirming it.
@@ -106,7 +119,7 @@ Open `http://localhost:3000`. Keep `.env` private; `.gitignore` excludes it.
 - `PORT` — supplied automatically by Render; defaults to `3000` locally.
 - `DATABASE_URL` — required PostgreSQL connection string from Neon.
 - `MAX_PEOPLE` — room limit, default 5 (hard maximum 5).
-- `TURN_URL`, `TURN_USER`, `TURN_PASS` — optional TURN relay configuration for restrictive networks.
+- `TURN_URLS` (or `TURN_URL`), `TURN_USER`, `TURN_PASS` — optional TURN relay configuration for restrictive networks. `TURN_URLS` accepts comma- or semicolon-separated `turn:` / `turns:` URLs.
 
 ## Existing room features
 
@@ -158,3 +171,10 @@ The signaling server advertises multiple public STUN servers. For connectivity t
 - The single diya follows a true circular orbit, sized to fit the visible call viewport.
 - `/developers.html` identifies Shreyash as the creator and is linked immediately after Terms & Conditions in the landing footer.
 - Live screen capture continues to use the browser-native `getDisplayMedia()` picker where the browser supports it. Chrome on Android currently does not support this API, so a website cannot invoke an Android app/screen picker there; Theater still supports selecting a local video file.
+
+
+## Voice and connection reliability (v6.10.1)
+
+Incoming participant voice is routed through a Web Audio output graph that is unlocked from the room-entry gesture; video tiles are kept muted so audio is not duplicated. A small **TAP TO ENABLE CALL AUDIO** recovery button appears only if the browser suspends the audio graph or blocks its fallback audio element. Microphone capture requests mono, low-latency speech settings when supported, the sender marks voice as high priority and camera video as lower priority under congestion, and the remote speaking monitor attaches when the audio track arrives. Chat and People panels have explicit open/close handlers, and chat messages are rendered as text (not HTML).
+
+The client uses multiple STUN endpoints and retries ICE after a disconnected/failed state. STUN helps discover public network addresses but cannot relay media through every restrictive NAT/firewall. For those networks, configure a TURN service in Render using `TURN_URLS` (or `TURN_URL`), `TURN_USER`, and `TURN_PASS`. `TURN_URLS` accepts comma- or semicolon-separated `turn:` / `turns:` URLs. Do not commit TURN credentials to this repository. TURN credentials are delivered to signed-in browsers as part of ICE setup, so prefer provider-supported short-lived or usage-restricted credentials. Without a valid TURN service, no browser-only code can guarantee a connection across every network.
